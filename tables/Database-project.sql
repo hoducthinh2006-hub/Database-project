@@ -1,9 +1,10 @@
--- create database DatabaseProject;
+create database DatabaseProject;
 use DatabaseProject;
 
 create table Giang_Vien(
 	MaGV int primary key,
     HoTen varchar(50) not null,
+    SDT varchar(20) not null,
     Email varchar(50) not null,
     TrinhDo varchar(50) not null,
     ChuyenMon varchar(50) not null,
