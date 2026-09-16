@@ -8,8 +8,7 @@ NgaySinh date not null,
 SDT varchar(20) not null,
 CCCD varchar(20) not null,
 NgayDK datetime default current_timestamp, 
-TrangThaiTK ENUM('DANG HOAT DONG', 'DANG BI KHOA'),
-UNIQUE(Email, SDT, CCCD)
+TrangThaiTK ENUM('DANG HOAT DONG', 'DANG BI KHOA')
 );
 
 create table Giang_Vien(
