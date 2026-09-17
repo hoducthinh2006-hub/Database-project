@@ -9,17 +9,16 @@ create table Giang_Vien(
     Email varchar(50) not null,
     TrinhDo varchar(50) not null,
     ChuyenMon varchar(50) not null,
-    CCCD varchar(20) not null,
-    unique(Email, CCCD)
+    unique(Email, CCCD, SDT)
 );
 create table Hoc_Vien(
+	MaHV int primary key,
 	HoTen varchar(50) not null,
     NgaySinh date not null,
     Email varchar(50) not null,
     SDT varchar(50) not null,
-    CCCD varchar(20) not null,
     NgayDK datetime default current_timestamp not null,
-    TrangThaiTK enum('Dang Hoat Dong', 'Dang Bi Khoa') not null,
+    TrangThaiTK enum('Dang Hoat Dong', 'Dang Bi Khoa') not null default 'Dang Hoat Dong',
     unique(Email, SDT, CCCD)
 );
 create table Chung_Chi(
