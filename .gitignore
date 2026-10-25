@@ -1,0 +1,6 @@
+node_modules/
+.env
+*.log
+.DS_Store
+.vscode/
+_backup_web_20261020/
