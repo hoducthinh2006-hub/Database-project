@@ -8,7 +8,7 @@ const pool = require('../config/db');
 async function studentEntitlement(db, maHV, maKH) {
   const [[dk]] = await (db || pool).query(
     `SELECT dk.MaDK, dk.TTDangKy, dk.HocPhi, dk.NgayDangKy,
-            EXISTS(SELECT 1 FROM THANH_TOAN tt WHERE tt.MaDK = dk.MaDK AND tt.TrangThaiTT = 'success') AS DaTra,
+            EXISTS(SELECT 1 FROM THANH_TOAN tt WHERE tt.MaDK = dk.MaDK AND tt.TrangThaiTT = 'success' AND tt.LoaiGiaoDich = 'thanh_toan') AS DaTra,
             EXISTS(SELECT 1 FROM THANH_TOAN tt WHERE tt.MaDK = dk.MaDK AND tt.TrangThaiTT = 'pending') AS DangCho
        FROM DANG_KY dk
       WHERE dk.MaHV = ? AND dk.MaKH = ? AND dk.TTDangKy <> 'da_huy'

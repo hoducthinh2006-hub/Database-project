@@ -91,8 +91,9 @@ CREATE TABLE DANG_KY (
 
 -- ─────────────────────────────────────────────
 -- 6. LICH_SU_HOC_TAP  (thay thế TIEN_DO_BAI_HOC)
---    Mỗi lần học viên học 1 bài = 1 bản ghi LSHT
---    Tiến độ tổng tính từ tổng TienDoTangThem / số bài
+--    Mỗi cặp (đăng ký, bài học) chỉ có 1 bản ghi tiến độ HIỆN HÀNH (UNIQUE) —
+--    app tự tìm-thì-sửa/không-có-thì-tạo (xem student.routes.js open/complete), ràng buộc UNIQUE ở đây chỉ để CSDL tự ép cứng.
+--    Tiến độ 1 lượt đăng ký = tổng TienDoTangThem của các bài đã hoàn thành (≤ 100%).
 -- ─────────────────────────────────────────────
 CREATE TABLE LICH_SU_HOC_TAP (
   MaLSHT             VARCHAR(20)   PRIMARY KEY,
@@ -103,21 +104,25 @@ CREATE TABLE LICH_SU_HOC_TAP (
   TrangThaiHoanThanh VARCHAR(30)   NOT NULL DEFAULT 'chua_hoan_thanh',
   FOREIGN KEY (MaDK) REFERENCES DANG_KY(MaDK) ON DELETE CASCADE,
   FOREIGN KEY (MaBH) REFERENCES BAI_HOC(MaBH),
-  CHECK (TrangThaiHoanThanh IN ('chua_hoan_thanh','dang_hoc','hoan_thanh'))
+  CHECK (TrangThaiHoanThanh IN ('chua_hoan_thanh','dang_hoc','hoan_thanh')),
+  CONSTRAINT UQ_LichSuHocTap_Cap UNIQUE (MaDK, MaBH)
 );
 
 -- ─────────────────────────────────────────────
--- 7. THANH_TOAN  (bỏ SoTienThanhToan → đã có HocPhi trong DANG_KY)
+-- 7. THANH_TOAN  (có SoTien riêng: với 'thanh_toan' = học phí tại thời điểm trả;
+--    với 'hoan_tien' = số tiền hoàn — có thể khác HocPhi gốc nên không suy ra được từ DANG_KY)
 -- ─────────────────────────────────────────────
 CREATE TABLE THANH_TOAN (
-  MaTT          VARCHAR(20)  PRIMARY KEY,
-  MaDK          VARCHAR(20)  NOT NULL,
+  MaTT          VARCHAR(20)    PRIMARY KEY,
+  MaDK          VARCHAR(20)    NOT NULL,
+  SoTien        DECIMAL(12,2)  NOT NULL DEFAULT 0 CHECK (SoTien >= 0),
   PhuongThucTT  VARCHAR(50),
-  LoaiGiaoDich  VARCHAR(50)  NOT NULL DEFAULT 'thanh_toan',
-  ThoiGian      DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  TrangThaiTT   VARCHAR(50)  NOT NULL DEFAULT 'pending',
+  LoaiGiaoDich  VARCHAR(50)    NOT NULL DEFAULT 'thanh_toan',
+  ThoiGian      DATETIME       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  TrangThaiTT   VARCHAR(50)    NOT NULL DEFAULT 'pending',
   FOREIGN KEY (MaDK) REFERENCES DANG_KY(MaDK) ON DELETE CASCADE,
-  CHECK (TrangThaiTT IN ('pending','success','failed','cancelled'))
+  CHECK (TrangThaiTT IN ('pending','success','failed','cancelled')),
+  CHECK (LoaiGiaoDich IN ('thanh_toan','hoan_tien'))
 );
 
 -- ─────────────────────────────────────────────
@@ -143,6 +148,7 @@ CREATE TABLE BAI_KIEM_TRA (
   ThoiGian       INT           NOT NULL CHECK (ThoiGian > 0),
   TrangThai      VARCHAR(30)   NOT NULL DEFAULT 'active',
   SoLanLamToiDa  INT           DEFAULT NULL,
+  DiemToiDa      DECIMAL(5,2)  NOT NULL DEFAULT 10 CHECK (DiemToiDa > 0),
   FOREIGN KEY (MaBH) REFERENCES BAI_HOC(MaBH) ON DELETE CASCADE,
   CHECK (TrangThai IN ('active','inactive'))
 );
@@ -169,7 +175,7 @@ CREATE TABLE KET_QUA (
 CREATE TABLE DANH_GIA (
   MaDG         VARCHAR(20) PRIMARY KEY,
   MaDK         VARCHAR(20) NOT NULL UNIQUE,
-  DiemDanhGia  INT         NOT NULL CHECK (DiemDanhGia BETWEEN 1 AND 5),
+  DiemDanhGia  INT         NOT NULL CHECK (DiemDanhGia BETWEEN 0 AND 10),
   NhanXet      TEXT,
   NgayDG       DATE        NOT NULL DEFAULT (CURRENT_DATE),
   FOREIGN KEY (MaDK) REFERENCES DANG_KY(MaDK) ON DELETE CASCADE
@@ -190,16 +196,18 @@ CREATE TABLE ADMIN (
 );
 
 -- ─────────────────────────────────────────────
--- TRIGGER: mỗi đăng ký chỉ 1 giao dịch thanh toán 'success'
--- (lưới an toàn ở tầng CSDL — không phụ thuộc UI)
+-- TRIGGER: mỗi đăng ký chỉ 1 giao dịch 'thanh_toan' (loại mua) 'success'
+-- (lưới an toàn ở tầng CSDL — không phụ thuộc UI). CHỈ xét loại 'thanh_toan':
+-- giao dịch 'hoan_tien' thành công (khi hủy đăng ký) vẫn phải chèn được bình
+-- thường dù đã có 1 dòng 'thanh_toan' success trước đó cho cùng MaDK.
 -- ─────────────────────────────────────────────
 DELIMITER $$
 CREATE TRIGGER trg_mot_lan_thanh_toan
 BEFORE INSERT ON THANH_TOAN
 FOR EACH ROW
 BEGIN
-  IF NEW.TrangThaiTT = 'success' AND EXISTS (
-    SELECT 1 FROM THANH_TOAN WHERE MaDK = NEW.MaDK AND TrangThaiTT = 'success'
+  IF NEW.TrangThaiTT = 'success' AND NEW.LoaiGiaoDich = 'thanh_toan' AND EXISTS (
+    SELECT 1 FROM THANH_TOAN WHERE MaDK = NEW.MaDK AND TrangThaiTT = 'success' AND LoaiGiaoDich = 'thanh_toan'
   ) THEN
     SIGNAL SQLSTATE '45000'
       SET MESSAGE_TEXT = 'Dang ky nay da thanh toan thanh cong, khong the thanh toan lai';

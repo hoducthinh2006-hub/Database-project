@@ -34,7 +34,8 @@
   const app = $("#app");
   const vnd = (n) => (Number(n) || 0).toLocaleString("vi-VN") + "₫";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const stars = (n) => { const r = Math.round(Number(n) || 0); return "★★★★★".slice(0, r) + "☆☆☆☆☆".slice(0, 5 - r); };
+  // Điểm đánh giá thang 0-10 (không còn 5 sao) — hiện 1 icon ⭐ + số, nguyên thì khỏi phần thập phân, TB (AVG) thì giữ 1 số lẻ
+  const stars = (n) => { const x = Number(n) || 0; return `⭐ ${Number.isInteger(x) ? x : x.toFixed(1)}`; };
   function toast(msg) {
     const t = $("#toast"); t.innerHTML = ico("info") + `<span>${esc(msg)}</span>`;
     t.classList.remove("show"); void t.offsetWidth; t.classList.add("show"); // gỡ rồi thêm lại để hiệu ứng trượt lên + thanh đếm giờ chạy lại ở mỗi thông báo
@@ -676,7 +677,7 @@
         <span class="glyph">${th.glyph}</span>
       </div>
       <div class="body">
-        <div class="rating">${rating != null ? `<span class="stars">${stars(rating)}</span><b>${rating.toFixed(1)}</b><span class="muted rcount">(${c.SoDanhGia || 0})</span>` : `<span class="muted">Chưa có đánh giá</span>`}${c.TrangThai && c.TrangThai !== "published" ? statusBadge(c.TrangThai) : ""}</div>
+        <div class="rating">${rating != null ? `<span class="stars">${stars(rating)}</span><span class="muted rcount">(${c.SoDanhGia || 0})</span>` : `<span class="muted">Chưa có đánh giá</span>`}${c.TrangThai && c.TrangThai !== "published" ? statusBadge(c.TrangThai) : ""}</div>
         <h3>${esc(c.TenKH)}</h3>
         <div class="gv"><span class="gv-ava">${esc((c.TenGV || "?").split(" ").pop()[0])}</span>${esc(c.TenGV)}</div>
         <div class="metarow">
@@ -1229,14 +1230,14 @@
           <span>📝 ${c.SoBaiKTDaLam}/${c.SoBaiKT} bài kiểm tra</span>
           <span class="${c.DiemTB != null ? "sc-" + scoreCls(c.DiemTB) : ""}">🎯 Điểm TB ${fmtScore(c.DiemTB)}</span>
           ${c.Hang ? `<span>🏆 Hạng ${c.Hang}/${c.TongHang}</span>` : ""}
-          ${c.DiemDanhGia ? `<span class="stars" title="Đánh giá của bạn">${stars(c.DiemDanhGia)}</span>` : ""}
+          ${c.DiemDanhGia != null ? `<span class="stars" title="Đánh giá của bạn">${stars(c.DiemDanhGia)}</span>` : ""}
         </div>
       </div>
       <div class="lc-right">
         ${cancelled ? `<button class="btn btn-ghost btn-sm" data-open="${c.MaKH}">Xem khóa học</button>`
           : `<button class="btn btn-accent btn-sm" data-resume="${c.MaKH}:${c.BaiTiepTheo ? c.BaiTiepTheo.MaBH : ""}">${done ? "Ôn tập" : c.SoBaiHoanThanh ? "Học tiếp" : "Bắt đầu"} →</button>`}
         ${unpaid ? `<button class="btn btn-ghost btn-sm" data-pay="${c.MaDK}">💳 Thanh toán</button>` : ""}
-        ${!cancelled ? `<button class="btn btn-ghost btn-sm" data-review="${c.MaDK}">${c.DiemDanhGia ? "✏️ Sửa đánh giá" : "⭐ Đánh giá"}</button>` : ""}
+        ${!cancelled ? `<button class="btn btn-ghost btn-sm" data-review="${c.MaDK}">${c.DiemDanhGia != null ? "✏️ Sửa đánh giá" : "⭐ Đánh giá"}</button>` : ""}
         ${c.MaCC ? `<button class="btn btn-ghost btn-sm" data-ltab="certs">🏅 Chứng chỉ</button>` : ""}
       </div>
     </div>`;
@@ -1343,10 +1344,16 @@
     const groups = {};
     R.lanLam.forEach((r) => { (groups[r.MaDK + "|" + r.MaBKT] = groups[r.MaDK + "|" + r.MaBKT] || { ...r, lans: [] }).lans.push(r); });
     const rerun = new Set(R.lanLam.filter((r) => r.LanDangKy > 1).map((r) => r.MaKH)); // khóa từng học nhiều lần → ghi rõ lần học để khỏi nhầm
-    const list = Object.values(groups).map((g) => { g.lans.sort((a, b) => a.LanLam - b.LanLam); g.best = Math.max(...g.lans.map((l) => l.DiemSo)); return g; })
-      .sort((a, b) => String(b.lans[b.lans.length - 1].ThoiGianLam).localeCompare(String(a.lans[a.lans.length - 1].ThoiGianLam)));
-    const passed = list.filter((g) => g.best >= 7).length;
-    const kp = [["📝", R.lanLam.length, "Lượt làm bài"], ["✅", list.length, "Bài đã làm"], ["🏆", list.length ? fmtScore(Math.max(...list.map((g) => g.best))) : "—", "Điểm cao nhất"], ["🎯", list.length ? Math.round((passed / list.length) * 100) + "%" : "—", "Tỷ lệ bài đạt (≥ 7)"]];
+    // mỗi bài kiểm tra có thể có điểm tối đa (DiemToiDa) khác nhau → quy đổi về thang 10 (best10) để so màu/đạt-chưa đạt nhất quán,
+    // nhưng vẫn hiện điểm thô "x/DiemToiDa" đúng theo bài đó.
+    const list = Object.values(groups).map((g) => {
+      g.lans.sort((a, b) => a.LanLam - b.LanLam);
+      g.best = Math.max(...g.lans.map((l) => l.DiemSo));
+      g.best10 = g.best / g.DiemToiDa * 10;
+      return g;
+    }).sort((a, b) => String(b.lans[b.lans.length - 1].ThoiGianLam).localeCompare(String(a.lans[a.lans.length - 1].ThoiGianLam)));
+    const passed = list.filter((g) => g.best10 >= 7).length;
+    const kp = [["📝", R.lanLam.length, "Lượt làm bài"], ["✅", list.length, "Bài đã làm"], ["🏆", list.length ? fmtScore(Math.max(...list.map((g) => g.best10))) : "—", "Điểm cao nhất (quy đổi /10)"], ["🎯", list.length ? Math.round((passed / list.length) * 100) + "%" : "—", "Tỷ lệ bài đạt (≥ 70%)"]];
     return `
     <div class="kpis">${kp.map(([ic, v, l]) => `<div class="kpi"><div class="ic">${ic}</div><b>${v}</b><span>${l}</span></div>`).join("")}</div>
     ${R.chuaLam.length ? `<h3 class="sub-h">Cần làm tiếp (${R.chuaLam.length})</h3>
@@ -1357,10 +1364,10 @@
     ${list.length ? `<div class="qres-list">${list.map((g) => {
       const left = g.SoLanLamToiDa ? g.SoLanLamToiDa - g.lans.length : null;
       return `<div class="qres-card">
-        <div class="sb ${scoreCls(g.best)}"><b>${fmtScore(g.best)}</b><span>/10</span></div>
+        <div class="sb ${scoreCls(g.best10)}"><b>${fmtScore(g.best)}</b><span>/${g.DiemToiDa}</span></div>
         <div class="qres-main"><b>${esc(g.TenBKT)}</b><span class="muted">${esc(g.TenKH)}${rerun.has(g.MaKH) ? ` (lần học ${g.LanDangKy})` : ""} · ${esc(g.TenBH)}</span>
-          <div class="att-row">${g.lans.map((l) => `<span class="att ${scoreCls(l.DiemSo)}" title="${esc(String(l.ThoiGianLam).slice(0, 16))}">Lần ${l.LanLam}: ${fmtScore(l.DiemSo)}</span>`).join("")}</div></div>
-        <div class="qres-act">${g.best >= 7 ? `<span class="pill ok">✓ Đạt</span>` : `<span class="pill gold">Chưa đạt</span>`}
+          <div class="att-row">${g.lans.map((l) => `<span class="att ${scoreCls(l.DiemSo / g.DiemToiDa * 10)}" title="${esc(String(l.ThoiGianLam).slice(0, 16))}">Lần ${l.LanLam}: ${fmtScore(l.DiemSo)}/${g.DiemToiDa}</span>`).join("")}</div></div>
+        <div class="qres-act">${g.best10 >= 7 ? `<span class="pill ok">✓ Đạt</span>` : `<span class="pill gold">Chưa đạt</span>`}
           ${left === null || left > 0 ? `<button class="btn btn-ghost btn-sm" data-do-quiz="${g.MaBKT}">Làm lại →</button>` : `<span class="muted" style="font-size:.76rem">Hết lượt</span>`}</div>
       </div>`;
     }).join("")}</div>` : emptyBlock("📝", "Chưa có kết quả nào", "Làm bài kiểm tra trong các khóa bạn đã đăng ký để theo dõi điểm số ở đây.", "", "")}`;
@@ -1426,9 +1433,9 @@
         <b class="tnum">${vnd(c.HocPhi)}</b>${statusBadge("pending")}</div>`).join("")}</div>` : ""}
     <h3 class="sub-h">Lịch sử giao dịch</h3>
     <div class="panel">${P.length ? P.map((p) => `<div class="pay-row">
-        <div class="pic">${PAY_ICON[p.PhuongThucTT] || "💳"}</div>
-        <div class="pz"><b>${esc(p.TenKH)}</b><span>${esc(p.PhuongThucTT || "—")} · ${esc(String(p.ThoiGian).slice(0, 16).replace("T", " "))}</span></div>
-        <div class="amt tnum">${vnd(p.HocPhi)}</div>${statusBadge(p.TrangThaiTT)}</div>`).join("")
+        <div class="pic">${p.LoaiGiaoDich === "hoan_tien" ? "↩️" : (PAY_ICON[p.PhuongThucTT] || "💳")}</div>
+        <div class="pz"><b>${esc(p.TenKH)}${p.LoaiGiaoDich === "hoan_tien" ? " · Hoàn tiền" : ""}</b><span>${esc(p.PhuongThucTT || "—")} · ${esc(String(p.ThoiGian).slice(0, 16).replace("T", " "))}</span></div>
+        <div class="amt tnum">${p.LoaiGiaoDich === "hoan_tien" ? "−" : ""}${vnd(p.SoTien)}</div>${statusBadge(p.TrangThaiTT)}</div>`).join("")
       : `<p class="muted">Chưa có giao dịch nào.</p>`}</div>`;
   }
   function openPayModal(maDK) {
@@ -1483,27 +1490,27 @@
   }
   function openReviewModal(maDK) {
     const c = ((STU.overview || {}).courses || []).find((x) => x.MaDK === maDK); if (!c) return;
-    let score = c.DiemDanhGia || 0;
-    const HINT = ["Chạm vào sao để chấm điểm", "Rất tệ 😞", "Chưa tốt 😕", "Bình thường 🙂", "Tốt 😃", "Tuyệt vời! 🤩"];
+    let score = c.DiemDanhGia != null ? c.DiemDanhGia : -1; // -1 = chưa chọn gì (0 vẫn là 1 điểm hợp lệ, không dùng 0 làm "chưa chọn")
+    const HINT = ["Chạm vào 1 số để chấm điểm", "Rất tệ 😞", "Tệ", "Không tốt", "Chưa ổn", "Bình thường 🙂", "Tạm ổn", "Khá", "Tốt 😃", "Rất tốt", "Tuyệt vời! 🤩"];
     openModal(`<div class="modal-card"><button class="modal-close" data-close aria-label="Đóng">✕</button>
-      <h2 class="modal-title">${c.DiemDanhGia ? "Sửa đánh giá" : "Đánh giá khóa học"}</h2>
+      <h2 class="modal-title">${c.DiemDanhGia != null ? "Sửa đánh giá" : "Đánh giá khóa học"}</h2>
       <p class="muted" style="margin-bottom:12px">${esc(c.TenKH)}</p>
       <div class="auth-err" id="rvErr" hidden></div>
-      <div class="star-pick" id="starPick">${[1, 2, 3, 4, 5].map((i) => `<button type="button" data-star="${i}" aria-label="${i} sao">★</button>`).join("")}</div>
+      <div class="score-pick" id="scorePick">${Array.from({ length: 11 }, (_, i) => i).map((i) => `<button type="button" data-score="${i}" aria-label="${i} điểm">${i}</button>`).join("")}</div>
       <div class="star-hint" id="starHint"></div>
       <div class="field"><label>Nhận xét (không bắt buộc)</label><textarea id="rvText" rows="4" maxlength="1000" placeholder="Khóa học giúp ích gì cho bạn? Điều gì có thể tốt hơn?">${esc(c.NhanXetCuaToi || "")}</textarea></div>
       <div class="form-actions"><button class="btn btn-ghost" data-close>Hủy</button><button class="btn btn-primary" id="rvSubmit">Gửi đánh giá</button></div></div>`);
     $$("[data-close]").forEach((b) => b.onclick = closeModal);
-    const paint = (n) => { $$("#starPick button").forEach((b) => b.classList.toggle("on", +b.dataset.star <= n)); $("#starHint").textContent = HINT[n]; };
-    $$("#starPick button").forEach((b) => {
-      b.onmouseenter = () => paint(+b.dataset.star);
+    const paint = (n) => { $$("#scorePick button").forEach((b) => b.classList.toggle("on", +b.dataset.score === n)); $("#starHint").textContent = n < 0 ? HINT[0] : HINT[n]; };
+    $$("#scorePick button").forEach((b) => {
+      b.onmouseenter = () => paint(+b.dataset.score);
       b.onmouseleave = () => paint(score);
-      b.onclick = () => { score = +b.dataset.star; paint(score); };
+      b.onclick = () => { score = +b.dataset.score; paint(score); };
     });
     paint(score);
     $("#rvSubmit").onclick = async () => {
       const er = $("#rvErr");
-      if (!score) { er.textContent = "Vui lòng chọn số sao."; er.hidden = false; return; }
+      if (score < 0) { er.textContent = "Vui lòng chọn điểm đánh giá."; er.hidden = false; return; }
       const btn = $("#rvSubmit"); btn.disabled = true;
       try {
         await API.studentReview(maDK, score, $("#rvText").value.trim());
@@ -1995,8 +2002,8 @@
   function adminEnrollmentsTab() {
     const list = ADMIN.enrollments || [];
     if (!list.length) return `<div class="empty-state"><div class="es-ic">📝</div><h3>Chưa có lượt đăng ký</h3></div>`;
-    return `<p class="muted" style="margin-bottom:14px">Chỉ xem — tối đa 500 lượt gần nhất. Đăng ký do học viên tự thực hiện qua trang khóa học.</p>
-    <table class="data-table"><thead><tr><th>Mã ĐK</th><th>Học viên</th><th>Khóa học</th><th>Học phí</th><th>Ngày ĐK</th><th>Trạng thái</th></tr></thead><tbody>
+    return `<p class="muted" style="margin-bottom:14px">Tối đa 500 lượt gần nhất. Đăng ký do học viên tự thực hiện qua trang khóa học — hủy thì tự hoàn tiền nếu đã thanh toán (xem mục Thanh toán).</p>
+    <table class="data-table"><thead><tr><th>Mã ĐK</th><th>Học viên</th><th>Khóa học</th><th>Học phí</th><th>Ngày ĐK</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${list.map((d) => `<tr>
         <td class="muted">${esc(d.MaDK)}</td>
         <td><b>${esc(d.TenHV)}</b></td>
@@ -2004,6 +2011,7 @@
         <td class="tnum">${vnd(d.HocPhi)}</td>
         <td>${esc(String(d.NgayDangKy).slice(0, 10))}</td>
         <td>${enrollStatusBadge(d.TTDangKy)}</td>
+        <td>${d.TTDangKy !== "da_huy" ? `<button class="btn btn-danger-ghost btn-sm" data-cancel-enroll="${esc(d.MaDK)}">Hủy đăng ký</button>` : ""}</td>
       </tr>`).join("")}
     </tbody></table>`;
   }
@@ -2011,12 +2019,13 @@
     const list = ADMIN.quizzes || [];
     if (!list.length) return `<div class="empty-state"><div class="es-ic">🧪</div><h3>Chưa có bài kiểm tra</h3></div>`;
     return `<p class="muted" style="margin-bottom:14px">Chỉ xem — bài kiểm tra do giảng viên soạn trong trang quản lý giảng dạy.</p>
-    <table class="data-table"><thead><tr><th>Bài kiểm tra</th><th>Thuộc bài học</th><th>Khóa học</th><th>Thời gian</th><th>Số lượt tối đa</th><th>Trạng thái</th></tr></thead><tbody>
+    <table class="data-table"><thead><tr><th>Bài kiểm tra</th><th>Thuộc bài học</th><th>Khóa học</th><th>Thời gian</th><th>Điểm tối đa</th><th>Số lượt tối đa</th><th>Trạng thái</th></tr></thead><tbody>
       ${list.map((q) => `<tr>
         <td><b>${esc(q.TenBKT)}</b></td>
         <td class="muted">${esc(q.TenBH)}</td>
         <td class="muted">${esc(q.TenKH)}</td>
         <td class="tnum">${q.ThoiGian} phút</td>
+        <td class="tnum">${q.DiemToiDa}</td>
         <td class="tnum">${q.SoLanLamToiDa ?? "∞"}</td>
         <td>${statusBadge(q.TrangThai)}</td>
       </tr>`).join("")}
@@ -2032,7 +2041,7 @@
         <td class="muted">${esc(r.TenKH)}</td>
         <td class="muted">${esc(r.TenBKT)}</td>
         <td class="tnum">${r.LanLam}</td>
-        <td class="tnum">${r.DiemSo}</td>
+        <td class="tnum">${r.DiemSo}/${r.DiemToiDa}</td>
         <td class="muted">${esc(String(r.ThoiGianLam).slice(0, 16).replace("T", " "))}</td>
       </tr>`).join("")}
     </tbody></table>`;
@@ -2046,9 +2055,9 @@
       ${list.map((t) => `<tr class="${t.TrangThaiTT === "pending" ? "row-pending" : ""}">
         <td><b>${esc(t.TenHV)}</b></td>
         <td class="muted">${esc(t.TenKH)}</td>
-        <td class="tnum">${vnd(t.HocPhi)}</td>
+        <td class="tnum">${t.LoaiGiaoDich === "hoan_tien" ? "−" : ""}${vnd(t.SoTien)}</td>
         <td class="muted">${esc(t.PhuongThucTT || "—")}</td>
-        <td class="muted">${esc(t.LoaiGiaoDich)}</td>
+        <td class="muted">${t.LoaiGiaoDich === "hoan_tien" ? "↩️ Hoàn tiền" : "Thanh toán"}</td>
         <td class="muted">${esc(String(t.ThoiGian).slice(0, 16).replace("T", " "))}</td>
         <td>${statusBadge(t.TrangThaiTT)}</td>
         <td>${t.TrangThaiTT === "pending" ? `<div class="row-acts"><button class="btn btn-accent btn-sm" data-approve-pay="${esc(t.MaTT)}">✓ Duyệt</button><button class="btn btn-danger-ghost btn-sm" data-reject-pay="${esc(t.MaTT)}">✕ Từ chối</button></div>` : ""}</td>
@@ -2198,6 +2207,15 @@
       toast("Đã từ chối giao dịch — học viên có thể gửi lại"); render();
     } catch (e) { toast(e.message); }
   }
+  function cancelEnrollment(maDK) {
+    openConfirm("Hủy lượt đăng ký này?", "Nếu đã thanh toán thành công, hệ thống tự ghi 1 giao dịch hoàn tiền đúng số tiền đã thu — không xóa giao dịch thanh toán cũ.", async () => {
+      try {
+        const r = await API.adminCancelEnrollment(maDK);
+        ADMIN.enrollments = await API.adminEnrollments(); ADMIN.payments = null; ADMIN.overview = null;
+        closeModal(); toast(r.MaTT ? `Đã hủy đăng ký — hoàn ${vnd(r.daTra)}` : "Đã hủy đăng ký"); render();
+      } catch (e) { toast(e.message); }
+    });
+  }
 
   /* ============ CRUD khóa học / bài học (giảng viên) ============ */
   function openCourseForm(maKH) {
@@ -2319,7 +2337,7 @@
         <div class="qi-main">
           <b>${esc(q.TenBKT)}</b>
           <div class="qi-meta">
-            <span>📋 ${q.SoCauHoi} câu</span><span>⏱ ${q.ThoiGian} phút</span>
+            <span>📋 ${q.SoCauHoi} câu</span><span>⏱ ${q.ThoiGian} phút</span><span>🎯 ${q.DiemToiDa} điểm</span>
             <span>🔁 ${q.SoLanLamToiDa ? `tối đa ${q.SoLanLamToiDa} lượt` : "không giới hạn"}</span>
             <span class="muted">· ${esc(q.TenBH)}</span>
           </div>
@@ -2383,16 +2401,17 @@
   }
   function quizResultHTML() {
     const q = QUIZ.bkt, r = QUIZ.result, questions = q.cauHoi || [];
-    const pass = Number(r.DiemSo) >= 7;
+    const pass = !!r.dat; // dùng đúng kết quả server đã tính (so theo % điểm tối đa của bài, không phải số điểm thô)
+    const nguong = Math.round(r.DiemToiDa * 0.7 * 100) / 100;
     return `
     <section class="wrap" style="padding-top:12px">
       <div class="quiz-result ${pass ? "pass" : "fail"}">
         <div class="qr-badge">${pass ? "🎉" : "📚"}</div>
-        <div class="qr-score tnum">${r.DiemSo}<span>/10</span></div>
+        <div class="qr-score tnum">${r.DiemSo}<span>/${r.DiemToiDa}</span></div>
         <p class="qr-sub">${r.SoCauDung}/${r.TongCau} câu đúng · Lần làm thứ ${r.LanLam}</p>
-        <div class="qr-msg">${pass ? "Chúc mừng! Bạn đã vượt qua bài kiểm tra." : "Chưa đạt (cần ≥ 7 điểm). Hãy xem lại và thử lại nhé."}</div>
+        <div class="qr-msg">${pass ? "Chúc mừng! Bạn đã vượt qua bài kiểm tra." : `Chưa đạt (cần ≥ ${nguong} điểm, tức 70% điểm tối đa). Hãy xem lại và thử lại nhé.`}</div>
       </div>
-      ${r.dapAnDung ? `<h3 style="margin:26px 0 14px;font-size:1.1rem">Xem lại đáp án</h3>` : `<div class="panel qr-hidden"><span class="qh-ic">${ico("lock")}</span><div><b>Đáp án chưa được mở</b><p class="muted">Đáp án chỉ hiện khi bạn đạt từ 7 điểm hoặc đã dùng hết lượt làm bài — để lần sau bạn tự làm lại, không chép đáp án.</p></div></div>`}
+      ${r.dapAnDung ? `<h3 style="margin:26px 0 14px;font-size:1.1rem">Xem lại đáp án</h3>` : `<div class="panel qr-hidden"><span class="qh-ic">${ico("lock")}</span><div><b>Đáp án chưa được mở</b><p class="muted">Đáp án chỉ hiện khi bạn đạt từ 70% điểm tối đa hoặc đã dùng hết lượt làm bài — để lần sau bạn tự làm lại, không chép đáp án.</p></div></div>`}
       <div class="quiz-questions">
         ${!r.dapAnDung ? "" : questions.map((qq, i) => {
           const my = QUIZ.answers[i], correct = r.dapAnDung[i];
@@ -2437,7 +2456,7 @@
       stuReset();
       render("page"); window.scrollTo({ top: 0 });
       if (QUIZ.result.capChungChi) setTimeout(openCertCelebration, 900);
-      else if (Number(QUIZ.result.DiemSo) >= 7) setTimeout(() => confetti(46), 350);
+      else if (QUIZ.result.dat) setTimeout(() => confetti(46), 350);
     } catch (e) {
       toast(e.message);
       // phiên làm bài này không còn hiệu lực (quá giờ, đã nộp, hết lượt…) → làm tiếp cũng vô ích, đưa về danh sách bài kiểm tra
@@ -2474,6 +2493,7 @@
         <div class="field-row">
           <div class="field"><label>Thời gian (phút)</label><input id="qbTime" type="number" min="1" value="${full ? full.ThoiGian : 10}"></div>
           <div class="field"><label>Số lượt tối đa</label><input id="qbMax" type="number" min="1" value="${full && full.SoLanLamToiDa ? full.SoLanLamToiDa : ""}" placeholder="trống = ∞"></div>
+          <div class="field"><label>Điểm tối đa</label><input id="qbDiemToiDa" type="number" min="1" value="${full && full.DiemToiDa ? full.DiemToiDa : 10}"></div>
         </div>
         <div class="qb-qhead"><b>Câu hỏi (${state.qs.length})</b><button class="btn btn-ghost btn-sm" id="qbAddQ">+ Thêm câu hỏi</button></div>
         <div id="qbList"></div>
@@ -2522,7 +2542,7 @@
         if (clean[i].opt.length < 2) return fail(`Câu ${i + 1} cần ít nhất 2 đáp án.`);
         if (clean[i].opt.some((o) => !o)) return fail(`Câu ${i + 1}: điền đủ nội dung các đáp án (hoặc xóa ô trống).`);
       }
-      const body = { TenBKT: ten, ThoiGian: Number($("#qbTime").value) || 10, SoLanLamToiDa: $("#qbMax").value === "" ? null : Number($("#qbMax").value), cauHoi: clean };
+      const body = { TenBKT: ten, ThoiGian: Number($("#qbTime").value) || 10, SoLanLamToiDa: $("#qbMax").value === "" ? null : Number($("#qbMax").value), DiemToiDa: Number($("#qbDiemToiDa").value) || 10, cauHoi: clean };
       const btn = $("#qbSave"); btn.disabled = true;
       try {
         if (quizMeta) await API.updateQuiz(quizMeta.MaBKT, body); else await API.createQuiz(maBH, body);
@@ -2596,6 +2616,7 @@
     $$("[data-course-status]").forEach((el) => el.onchange = () => setCourseStatus(el.dataset.courseStatus, el.value));
     $$("[data-approve-pay]").forEach((el) => el.onclick = () => approvePayment(el.dataset.approvePay));
     $$("[data-reject-pay]").forEach((el) => el.onclick = () => rejectPayment(el.dataset.rejectPay));
+    $$("[data-cancel-enroll]").forEach((el) => el.onclick = () => cancelEnrollment(el.dataset.cancelEnroll));
     $$("[data-report-param]").forEach((el) => el.onchange = () => {
       const [id, key] = el.dataset.reportParam.split(":");
       ADMIN.reportState[id].params[key] = el.value;

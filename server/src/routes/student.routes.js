@@ -160,7 +160,7 @@ router.get('/results', async (req, res) => {
   try {
     const maHV = req.user.ma;
     const [lanLam] = await pool.query(`
-      SELECT kq.MaKQ, kq.MaDK, kq.MaBKT, bkt.TenBKT, bkt.SoLanLamToiDa, bh.TenBH,
+      SELECT kq.MaKQ, kq.MaDK, kq.MaBKT, bkt.TenBKT, bkt.SoLanLamToiDa, bkt.DiemToiDa, bh.TenBH,
              kh.MaKH, kh.TenKH, kq.LanLam, kq.DiemSo, kq.ThoiGianLam, lan.LanDangKy
       FROM KET_QUA kq
       JOIN DANG_KY dk       ON dk.MaDK = kq.MaDK
@@ -192,7 +192,7 @@ router.get('/results', async (req, res) => {
 router.get('/payments', async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT tt.MaTT, tt.MaDK, kh.TenKH, dk.HocPhi, tt.PhuongThucTT, tt.LoaiGiaoDich, tt.ThoiGian, tt.TrangThaiTT
+      SELECT tt.MaTT, tt.MaDK, kh.TenKH, tt.SoTien, tt.PhuongThucTT, tt.LoaiGiaoDich, tt.ThoiGian, tt.TrangThaiTT
       FROM THANH_TOAN tt
       JOIN DANG_KY dk  ON dk.MaDK = tt.MaDK
       JOIN KHOA_HOC kh ON kh.MaKH = dk.MaKH
@@ -217,13 +217,13 @@ router.post('/payments', async (req, res) => {
       if (!dk || dk.MaHV !== req.user.ma) throw notFound('Không tìm thấy lượt đăng ký');
       if (dk.TTDangKy === 'da_huy') throw bad('Lượt đăng ký đã bị hủy');
       if (Number(dk.HocPhi) <= 0) throw bad('Khóa học miễn phí, không cần thanh toán');
-      const [[paid]] = await conn.query(`SELECT 1 AS x FROM THANH_TOAN WHERE MaDK = ? AND TrangThaiTT = 'success'`, [maDK]);
+      const [[paid]] = await conn.query(`SELECT 1 AS x FROM THANH_TOAN WHERE MaDK = ? AND TrangThaiTT = 'success' AND LoaiGiaoDich = 'thanh_toan'`, [maDK]);
       if (paid) throw conflict('Lượt đăng ký này đã được thanh toán', 'ALREADY_PAID');
       const [[pending]] = await conn.query(`SELECT 1 AS x FROM THANH_TOAN WHERE MaDK = ? AND TrangThaiTT = 'pending'`, [maDK]);
       if (pending) throw conflict('Bạn đã gửi yêu cầu thanh toán trước đó, đang chờ admin xác nhận', 'ALREADY_PENDING');
       const code = await insertWithCode(pool, 'THANH_TOAN', 'MaTT', 'TT', (c) => conn.query(
-        `INSERT INTO THANH_TOAN(MaTT, MaDK, PhuongThucTT, LoaiGiaoDich, TrangThaiTT) VALUES(?,?,?,'thanh_toan','pending')`,
-        [c, maDK, phuongThuc]));
+        `INSERT INTO THANH_TOAN(MaTT, MaDK, SoTien, PhuongThucTT, LoaiGiaoDich, TrangThaiTT) VALUES(?,?,?,?,'thanh_toan','pending')`,
+        [c, maDK, dk.HocPhi, phuongThuc]));
       if (dk.TTDangKy === 'cho_xac_nhan') await conn.query(`UPDATE DANG_KY SET TTDangKy = 'da_xac_nhan' WHERE MaDK = ?`, [maDK]);
       return code;
     });
@@ -242,7 +242,7 @@ router.get('/payments/:maDK/qr', async (req, res) => {
     if (!dk || dk.MaHV !== req.user.ma) throw notFound('Không tìm thấy lượt đăng ký');
     if (dk.TTDangKy === 'da_huy') throw bad('Lượt đăng ký đã bị hủy');
     if (Number(dk.HocPhi) <= 0) throw bad('Khóa học miễn phí, không cần thanh toán');
-    const [[paid]] = await pool.query(`SELECT 1 AS x FROM THANH_TOAN WHERE MaDK = ? AND TrangThaiTT = 'success'`, [maDK]);
+    const [[paid]] = await pool.query(`SELECT 1 AS x FROM THANH_TOAN WHERE MaDK = ? AND TrangThaiTT = 'success' AND LoaiGiaoDich = 'thanh_toan'`, [maDK]);
     if (paid) throw conflict('Lượt đăng ký này đã được thanh toán', 'ALREADY_PAID');
     const soTien = Math.round(Number(dk.HocPhi));
     const noiDung = maDK; // nội dung CK = đúng mã đăng ký, để đối soát thủ công bằng cách tra DANG_KY.MaDK
@@ -259,7 +259,7 @@ router.get('/payments/:maDK/qr', async (req, res) => {
 router.post('/reviews', async (req, res) => {
   try {
     const maDK = v.code(req.body.maDK, 'Mã đăng ký');
-    const d = v.int(req.body.diem, { name: 'Điểm đánh giá', min: 1, max: 5 });
+    const d = v.int(req.body.diem, { name: 'Điểm đánh giá', min: 0, max: 10 });
     const text = v.paragraph(req.body.nhanXet, { name: 'Nhận xét', max: 1000 });
     const [[dk]] = await pool.query('SELECT MaDK, MaHV, TTDangKy FROM DANG_KY WHERE MaDK = ?', [maDK]);
     if (!dk || dk.MaHV !== req.user.ma) throw notFound('Không tìm thấy lượt đăng ký');

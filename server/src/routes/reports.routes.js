@@ -95,7 +95,9 @@ router.get('/thong-ke-tiendo', (req, res) => {
     SELECT kh.MaKH, kh.TenKH,
            SUM(CASE WHEN dk.TTDangKy = 'hoan_thanh' THEN 1 ELSE 0 END) AS DaHoanThanh,
            SUM(CASE WHEN dk.TTDangKy = 'dang_hoc'   THEN 1 ELSE 0 END) AS DangHoc,
-           SUM(CASE WHEN dk.TTDangKy NOT IN ('hoan_thanh','dang_hoc') THEN 1 ELSE 0 END) AS ChuaHoanThanh
+           -- "chưa hoàn thành" = chưa bắt đầu học và CHƯA HỦY (3 nhóm loại trừ lẫn nhau); lượt đã hủy đếm riêng ở cột DaHuy
+           SUM(CASE WHEN dk.TTDangKy NOT IN ('hoan_thanh','dang_hoc','da_huy') THEN 1 ELSE 0 END) AS ChuaHoanThanh,
+           SUM(CASE WHEN dk.TTDangKy = 'da_huy' THEN 1 ELSE 0 END) AS DaHuy
     FROM   KHOA_HOC kh
     JOIN   DANG_KY dk ON dk.MaKH = kh.MaKH
     WHERE  dk.NgayDangKy BETWEEN ? AND ?
@@ -146,16 +148,15 @@ router.get('/xephang-hocvien', (req, res) => {
 
 // ───────────────────────── 🟧 THỊNH — học viên / thanh toán / chứng chỉ / đánh giá ─────────────────────────
 
-// 11 ⭐ Doanh thu hệ thống trong 1 tháng (chỉ giao dịch success, loại thanh_toan)
+// 11 ⭐ Doanh thu hệ thống trong 1 tháng = tổng giao dịch thanh_toan thành công
+//     TRỪ tổng giao dịch hoan_tien thành công phát sinh trong tháng (thất bại/đang chờ không tính).
 router.get('/doanhthu-theo-thang', (req, res) => {
   const nam = num(req.query.nam, 2026, 2000, 2100), thang = num(req.query.thang, 8, 1, 12);
   run(res, `
     SELECT DATE_FORMAT(tt.ThoiGian, '%Y-%m') AS Thang,
-           SUM(dk.HocPhi) AS DoanhThu
+           SUM(CASE WHEN tt.LoaiGiaoDich = 'thanh_toan' THEN tt.SoTien ELSE -tt.SoTien END) AS DoanhThu
     FROM   THANH_TOAN tt
-    JOIN   DANG_KY dk ON dk.MaDK = tt.MaDK
-    WHERE  tt.TrangThaiTT  = 'success'
-      AND  tt.LoaiGiaoDich = 'thanh_toan'
+    WHERE  tt.TrangThaiTT = 'success'
       AND  YEAR(tt.ThoiGian) = ? AND MONTH(tt.ThoiGian) = ?
     GROUP BY DATE_FORMAT(tt.ThoiGian, '%Y-%m')`, [nam, thang]);
 });

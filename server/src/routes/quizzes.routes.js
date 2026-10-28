@@ -15,16 +15,19 @@ const v = require('../utils/validate');
  * Câu hỏi lưu dạng JSON trong cột NoiDungBKT (giữ nguyên 11 bảng):
  *   [ { "q": "Nội dung câu hỏi", "opt": ["A","B","C","D"], "dap": 1 }, ... ]
  *   dap = chỉ số (0-based) của đáp án đúng.
- * Điểm = (số câu đúng / tổng câu) * 10, lưu vào KET_QUA.DiemSo (thang 10).
+ * Điểm = (số câu đúng / tổng câu) * DiemToiDa của bài đó, lưu vào KET_QUA.DiemSo.
+ * Mỗi bài kiểm tra có thể có điểm tối đa khác nhau (mặc định 10) — đạt/không đạt luôn
+ * so theo TỶ LỆ % trên điểm tối đa của CHÍNH bài đó (PASS_RATIO), không so số điểm thô.
  *
  * CHỐNG GIAN LẬN (đều do SERVER quyết định, không tin trình duyệt):
  *  - Mở bài (GET) cấp "token phiên làm bài" ký bằng JWT_SECRET, ghi giờ bắt đầu + số lần làm dự kiến.
  *    Nộp bài phải kèm token: quá giờ (ThoiGian + dung sai) → không ghi nhận; token dùng lại/cũ → từ chối.
  *  - Nộp quá nhanh (vài giây) bị từ chối; làm lại phải chờ QUIZ_COOLDOWN_SECONDS.
- *  - Đáp án đúng chỉ được tiết lộ khi ĐẠT (>= 7) hoặc HẾT LƯỢT — nếu không, nộp thử một lần rồi đọc đáp án để làm lại sẽ lấy điểm tuyệt đối.
+ *  - Đáp án đúng chỉ được tiết lộ khi ĐẠT (>= 70% điểm tối đa) hoặc HẾT LƯỢT — nếu không, nộp thử một lần rồi đọc đáp án để làm lại sẽ lấy điểm tuyệt đối.
  *  - Chỉ học viên đã đăng ký (và đã thanh toán nếu khóa có phí) mới xem câu hỏi / nộp bài.
  * ===================================================================== */
-const PASS = 7;
+const PASS_RATIO = 0.7; // ngưỡng đạt: cùng quy tắc với điều kiện hoàn thành khóa (V_DIEM_TB, utils/enrollment.js)
+const passOf = (diemToiDa) => Math.round(PASS_RATIO * diemToiDa * 100) / 100;
 const COOLDOWN_S = Number(process.env.QUIZ_COOLDOWN_SECONDS ?? 15);
 const MIN_S_PER_Q = Number(process.env.QUIZ_MIN_SECONDS_PER_QUESTION ?? 2);
 
@@ -37,7 +40,7 @@ function parseQ(s) {
 async function bktInfo(maBKT) {
   const [[r]] = await pool.query(
     `SELECT bkt.MaBKT, bkt.MaBH, bkt.NoiDungBKT, bkt.TenBKT, bkt.ThoiGian,
-            bkt.TrangThai, bkt.SoLanLamToiDa, bh.MaKH, kh.MaGV, kh.TrangThai AS TrangThaiKH
+            bkt.TrangThai, bkt.SoLanLamToiDa, bkt.DiemToiDa, bh.MaKH, kh.MaGV, kh.TrangThai AS TrangThaiKH
        FROM BAI_KIEM_TRA bkt
        JOIN BAI_HOC bh ON bh.MaBH = bkt.MaBH
        JOIN KHOA_HOC kh ON kh.MaKH = bh.MaKH
@@ -56,14 +59,14 @@ router.get('/course/:maKH', optionalAuth, async (req, res) => {
     const canSeeAll = isOwner(req.user, kh) || isAdmin(req.user);
     const [rows] = await pool.query(
       `SELECT bkt.MaBKT, bkt.MaBH, bkt.TenBKT, bkt.ThoiGian, bkt.TrangThai,
-              bkt.SoLanLamToiDa, bkt.NoiDungBKT, bh.TenBH, bh.ThuTu
+              bkt.SoLanLamToiDa, bkt.DiemToiDa, bkt.NoiDungBKT, bh.TenBH, bh.ThuTu
          FROM BAI_KIEM_TRA bkt
          JOIN BAI_HOC bh ON bh.MaBH = bkt.MaBH
         WHERE bh.MaKH = ? ${canSeeAll ? '' : "AND bkt.TrangThai = 'active'"}
         ORDER BY bh.ThuTu, bkt.MaBKT`, [maKH]);
     res.json(rows.map((r) => ({
       MaBKT: r.MaBKT, MaBH: r.MaBH, TenBKT: r.TenBKT, ThoiGian: r.ThoiGian,
-      TrangThai: r.TrangThai, SoLanLamToiDa: r.SoLanLamToiDa,
+      TrangThai: r.TrangThai, SoLanLamToiDa: r.SoLanLamToiDa, DiemToiDa: Number(r.DiemToiDa),
       TenBH: r.TenBH, ThuTu: r.ThuTu, SoCauHoi: parseQ(r.NoiDungBKT).length,
     })));
   } catch (e) { fail(res, e); }
@@ -84,8 +87,8 @@ router.get('/:maBKT', auth, async (req, res) => {
 
     const out = {
       MaBKT: bkt.MaBKT, MaBH: bkt.MaBH, MaKH: bkt.MaKH, TenBKT: bkt.TenBKT,
-      ThoiGian: bkt.ThoiGian, TrangThai: bkt.TrangThai, SoLanLamToiDa: bkt.SoLanLamToiDa,
-      isOwner: owner, daLam: 0, diemCao: null, conLuot: true,
+      ThoiGian: bkt.ThoiGian, TrangThai: bkt.TrangThai, SoLanLamToiDa: bkt.SoLanLamToiDa, DiemToiDa: Number(bkt.DiemToiDa),
+      isOwner: owner, daLam: 0, diemCao: null, dat: false, conLuot: true,
       cauHoi: owner ? questions : questions.map((q) => ({ q: q.q, opt: q.opt })),
     };
 
@@ -98,7 +101,7 @@ router.get('/:maBKT', auth, async (req, res) => {
         `SELECT COUNT(*) AS n, MAX(DiemSo) AS hi, COALESCE(MAX(LanLam),0) AS maxLan, MAX(ThoiGianLam) AS cuoi,
                 TIMESTAMPDIFF(SECOND, MAX(ThoiGianLam), NOW()) AS truoc
            FROM KET_QUA WHERE MaDK=? AND MaBKT=?`, [ent.dk.MaDK, bkt.MaBKT]);
-      out.daLam = s.n; out.diemCao = s.hi;
+      out.daLam = s.n; out.diemCao = s.hi != null ? Number(s.hi) : null; out.dat = out.diemCao != null && out.diemCao >= passOf(bkt.DiemToiDa);
       if (bkt.SoLanLamToiDa && s.n >= bkt.SoLanLamToiDa) out.conLuot = false;
       if (out.conLuot) {
         if (s.truoc != null && s.truoc < COOLDOWN_S) {
@@ -149,7 +152,8 @@ router.post('/:maBKT/submit', auth, async (req, res) => {
       if (ok) correct++;
       return ok;
     });
-    const diemSo = Math.round((correct / questions.length) * 1000) / 100;
+    const diemToiDa = Number(bkt.DiemToiDa);
+    const diemSo = Math.round((correct / questions.length) * diemToiDa * 100) / 100;
 
     const out = await withTx(pool, async (conn) => {
       await conn.query('SELECT MaDK FROM DANG_KY WHERE MaDK=? FOR UPDATE', [ent.dk.MaDK]); // tuần tự hóa các lần nộp của cùng 1 lượt đăng ký
@@ -169,10 +173,11 @@ router.post('/:maBKT/submit', auth, async (req, res) => {
     const st = await syncEnrollment(pool, ent.dk.MaDK);
 
     const conLuot = !bkt.SoLanLamToiDa || out.daLam < bkt.SoLanLamToiDa;
-    const mo = diemSo >= PASS || !conLuot; // chỉ tiết lộ đáp án khi đã đạt hoặc hết lượt
+    const dat = diemSo >= passOf(diemToiDa);
+    const mo = dat || !conLuot; // chỉ tiết lộ đáp án khi đã đạt hoặc hết lượt
     res.json({
-      MaKQ: out.MaKQ, DiemSo: diemSo, SoCauDung: correct, TongCau: questions.length, LanLam: out.lanLam,
-      conLuot, dat: diemSo >= PASS,
+      MaKQ: out.MaKQ, DiemSo: diemSo, DiemToiDa: diemToiDa, SoCauDung: correct, TongCau: questions.length, LanLam: out.lanLam,
+      conLuot, dat,
       daMoDapAn: mo,
       ketQua: mo ? dung : null,
       dapAnDung: mo ? questions.map((q) => Number(q.dap)) : null,
@@ -193,10 +198,11 @@ router.post('/lesson/:maBH', auth, teacherOnly, async (req, res) => {
     const qs = v.questions(req.body.cauHoi);
     const tg = v.int(req.body.ThoiGian === undefined || req.body.ThoiGian === '' ? 10 : req.body.ThoiGian, { name: 'Thời gian', min: 1, max: 300 });
     const max = v.int(req.body.SoLanLamToiDa, { name: 'Số lượt tối đa', min: 1, max: 100, required: false });
+    const diemToiDa = v.int(req.body.DiemToiDa === undefined || req.body.DiemToiDa === '' ? 10 : req.body.DiemToiDa, { name: 'Điểm tối đa', min: 1, max: 1000 });
 
     const MaBKT = await insertWithCode(pool, 'BAI_KIEM_TRA', 'MaBKT', 'BKT', (code) => pool.query(
-      `INSERT INTO BAI_KIEM_TRA(MaBKT,MaBH,TenBKT,NoiDungBKT,ThoiGian,TrangThai,SoLanLamToiDa)
-       VALUES(?,?,?,?,?,?,?)`, [code, maBH, ten, JSON.stringify(qs), tg, 'active', max]));
+      `INSERT INTO BAI_KIEM_TRA(MaBKT,MaBH,TenBKT,NoiDungBKT,ThoiGian,TrangThai,SoLanLamToiDa,DiemToiDa)
+       VALUES(?,?,?,?,?,?,?,?)`, [code, maBH, ten, JSON.stringify(qs), tg, 'active', max, diemToiDa]));
     res.json({ MaBKT });
   } catch (e) { fail(res, e); }
 });
@@ -212,10 +218,11 @@ router.put('/:maBKT', auth, teacherOnly, async (req, res) => {
     const qs = b.cauHoi === undefined ? v.questions(parseQ(bkt.NoiDungBKT)) : v.questions(b.cauHoi);
     const tg = b.ThoiGian === undefined || b.ThoiGian === '' ? bkt.ThoiGian : v.int(b.ThoiGian, { name: 'Thời gian', min: 1, max: 300 });
     const max = b.SoLanLamToiDa === undefined ? bkt.SoLanLamToiDa : v.int(b.SoLanLamToiDa, { name: 'Số lượt tối đa', min: 1, max: 100, required: false });
+    const diemToiDa = b.DiemToiDa === undefined || b.DiemToiDa === '' ? bkt.DiemToiDa : v.int(b.DiemToiDa, { name: 'Điểm tối đa', min: 1, max: 1000 });
     const st = b.TrangThai === undefined ? bkt.TrangThai : v.oneOf(b.TrangThai, ['active', 'inactive'], 'Trạng thái');
     await pool.query(
-      'UPDATE BAI_KIEM_TRA SET TenBKT=?,NoiDungBKT=?,ThoiGian=?,SoLanLamToiDa=?,TrangThai=? WHERE MaBKT=?',
-      [ten, JSON.stringify(qs), tg, max, st, maBKT]);
+      'UPDATE BAI_KIEM_TRA SET TenBKT=?,NoiDungBKT=?,ThoiGian=?,SoLanLamToiDa=?,DiemToiDa=?,TrangThai=? WHERE MaBKT=?',
+      [ten, JSON.stringify(qs), tg, max, diemToiDa, st, maBKT]);
     res.json({ ok: true });
   } catch (e) { fail(res, e); }
 });

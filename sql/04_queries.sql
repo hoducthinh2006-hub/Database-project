@@ -83,14 +83,15 @@ ORDER BY dk.MaKH, vdt.DiemTrungBinh DESC;
 
 -- ---------------------------------------------------------------------
 -- 6 ⭐ Thống kê số lượt ĐÃ HOÀN THÀNH / ĐANG HỌC / CHƯA HOÀN THÀNH
---     theo từng khóa học trong 1 khoảng thời gian cho trước.
---     "Chưa hoàn thành" = mọi trạng thái còn lại (chờ xác nhận/đã xác
---     nhận/đã huỷ) — KHÔNG lẫn vào nhóm đang học hay hoàn thành.
+--     theo từng khóa học trong 1 khoảng thời gian cho trước. 3 nhóm loại
+--     trừ lẫn nhau: "chưa hoàn thành" = chưa bắt đầu học VÀ CHƯA HUỶ.
+--     Lượt đã huỷ đếm RIÊNG (cột DaHuy), không gộp vào "chưa hoàn thành".
 -- ---------------------------------------------------------------------
 SELECT kh.MaKH, kh.TenKH,
        SUM(CASE WHEN dk.TTDangKy = 'hoan_thanh' THEN 1 ELSE 0 END) AS DaHoanThanh,
        SUM(CASE WHEN dk.TTDangKy = 'dang_hoc'   THEN 1 ELSE 0 END) AS DangHoc,
-       SUM(CASE WHEN dk.TTDangKy NOT IN ('hoan_thanh','dang_hoc') THEN 1 ELSE 0 END) AS ChuaHoanThanh
+       SUM(CASE WHEN dk.TTDangKy NOT IN ('hoan_thanh','dang_hoc','da_huy') THEN 1 ELSE 0 END) AS ChuaHoanThanh,
+       SUM(CASE WHEN dk.TTDangKy = 'da_huy' THEN 1 ELSE 0 END) AS DaHuy
 FROM   KHOA_HOC kh
 JOIN   DANG_KY dk ON dk.MaKH = kh.MaKH
 WHERE  dk.NgayDangKy BETWEEN '2026-08-01' AND '2026-09-30'
@@ -145,17 +146,16 @@ ORDER BY dk.MaKH, XepHang;
 -- #####################################################################
 
 -- ---------------------------------------------------------------------
--- 11 ⭐ Doanh thu hệ thống trong 1 tháng cho trước — CHỈ giao dịch
---      success, loại 'thanh_toan' (không tính 'hoan_tien' nếu có sau này).
---      Đăng ký đã huỷ/chưa trả tiền không có dòng THANH_TOAN success
---      nên tự động bị loại — không cần điều kiện thừa.
+-- 11 ⭐ Doanh thu hệ thống trong 1 tháng cho trước = tổng giao dịch
+--      'thanh_toan' thành công TRỪ tổng giao dịch 'hoan_tien' thành công
+--      phát sinh trong tháng (thất bại/đang chờ không tính). Khi 1 lượt
+--      đăng ký bị huỷ, doanh thu được điều chỉnh qua dòng hoan_tien chứ
+--      KHÔNG xoá dòng thanh_toan cũ — tránh tính trùng/tính thiếu.
 -- ---------------------------------------------------------------------
 SELECT DATE_FORMAT(tt.ThoiGian, '%Y-%m') AS Thang,
-       SUM(dk.HocPhi) AS DoanhThu
+       SUM(CASE WHEN tt.LoaiGiaoDich = 'thanh_toan' THEN tt.SoTien ELSE -tt.SoTien END) AS DoanhThu
 FROM   THANH_TOAN tt
-JOIN   DANG_KY dk ON dk.MaDK = tt.MaDK
-WHERE  tt.TrangThaiTT  = 'success'
-  AND  tt.LoaiGiaoDich = 'thanh_toan'
+WHERE  tt.TrangThaiTT = 'success'
   AND  YEAR(tt.ThoiGian) = 2026 AND MONTH(tt.ThoiGian) = 8
 GROUP BY DATE_FORMAT(tt.ThoiGian, '%Y-%m');
 

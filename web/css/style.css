@@ -837,6 +837,10 @@ input[type=date]{color-scheme:dark;}
 .star-pick button:hover{transform:scale(1.18);}
 .star-pick button.on{color:var(--star);filter:drop-shadow(0 4px 10px rgba(251,191,36,.45));}
 .star-hint{text-align:center;font-size:.86rem;color:var(--dim);font-weight:600;min-height:1.3em;margin-bottom:14px;}
+.score-pick{display:flex;gap:5px;justify-content:center;flex-wrap:wrap;margin:8px 0 4px;}
+.score-pick button{width:32px;height:32px;border-radius:10px;border:1px solid var(--border-strong);background:var(--surface-2);color:var(--ink);font-weight:700;font-size:.82rem;flex:none;transition:transform .12s,background .12s,color .12s,border-color .12s;}
+.score-pick button:hover{transform:scale(1.12);border-color:var(--star);}
+.score-pick button.on{background:var(--star);border-color:var(--star);color:#1a1300;}
 .celebrate{text-align:center;}
 .cel-emoji{font-size:4.2rem;animation:pop .6s cubic-bezier(.2,1.4,.4,1) both;}
 .celebrate .form-actions{justify-content:center;}

@@ -17,13 +17,15 @@ LEFT JOIN LICH_SU_HOC_TAP ls ON ls.MaDK = dk.MaDK
 GROUP BY dk.MaDK, dk.MaKH;
 
 -- Điểm trung bình mỗi lượt đăng ký, lấy điểm CAO NHẤT của mỗi bài kiểm tra
--- nếu bài đó được làm nhiều lần. Thang điểm 10.
+-- nếu bài đó được làm nhiều lần, QUY ĐỔI về thang 10 theo đúng DiemToiDa của
+-- từng bài rồi mới lấy trung bình (các bài có thể có điểm tối đa khác nhau).
+-- VD: bài A tối đa 20đ, học viên đạt 14đ → quy đổi 14/20*10 = 7đ trước khi lấy TB.
 CREATE OR REPLACE VIEW V_DIEM_TB AS
-SELECT MaDK, AVG(DiemCaoNhat) AS DiemTrungBinh
+SELECT MaDK, AVG(DiemCaoNhat / DiemToiDa * 10) AS DiemTrungBinh
 FROM (
-  SELECT MaDK, MaBKT, MAX(DiemSo) AS DiemCaoNhat
-  FROM   KET_QUA
-  GROUP BY MaDK, MaBKT
+  SELECT kq.MaDK, kq.MaBKT, MAX(kq.DiemSo) AS DiemCaoNhat, bkt.DiemToiDa
+  FROM   KET_QUA kq JOIN BAI_KIEM_TRA bkt ON bkt.MaBKT = kq.MaBKT
+  GROUP BY kq.MaDK, kq.MaBKT, bkt.DiemToiDa
 ) AS BestPerTest
 GROUP BY MaDK;
 

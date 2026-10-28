@@ -6,8 +6,10 @@ const v = require('../utils/validate');
 
 router.use(auth, teacherOnly);
 
-// Doanh thu chỉ tính giao dịch THANH TOÁN thành công (không tính hoàn tiền / thất bại / đang chờ) — cùng định nghĩa với báo cáo #11 của nhóm
-const PAID = `tt.TrangThaiTT = 'success' AND tt.LoaiGiaoDich = 'thanh_toan'`;
+// Doanh thu RÒNG = tổng 'thanh_toan' thành công TRỪ tổng 'hoan_tien' thành công — cùng định nghĩa với báo cáo #11 của nhóm
+const NET_SOTIEN = `CASE WHEN tt.TrangThaiTT = 'success' AND tt.LoaiGiaoDich = 'thanh_toan' THEN tt.SoTien
+                         WHEN tt.TrangThaiTT = 'success' AND tt.LoaiGiaoDich = 'hoan_tien'  THEN -tt.SoTien
+                         ELSE 0 END`;
 
 // ─────────────────────────────────────────────
 // GET /api/teacher/overview — dashboard tổng quan cho giảng viên đang đăng nhập
@@ -24,17 +26,17 @@ router.get('/overview', async (req, res) => {
       WHERE kh.MaGV = ?`, [maGV]);
 
     const [[doanhThu]] = await pool.query(`
-      SELECT COALESCE(SUM(dk.HocPhi),0) AS TongDoanhThu
+      SELECT COALESCE(SUM(${NET_SOTIEN}),0) AS TongDoanhThu
       FROM KHOA_HOC kh
       JOIN DANG_KY dk ON dk.MaKH = kh.MaKH
-      JOIN THANH_TOAN tt ON tt.MaDK = dk.MaDK AND ${PAID}
+      JOIN THANH_TOAN tt ON tt.MaDK = dk.MaDK AND tt.TrangThaiTT = 'success'
       WHERE kh.MaGV = ?`, [maGV]);
 
     const [doanhThu6Thang] = await pool.query(`
-      SELECT DATE_FORMAT(tt.ThoiGian,'%Y-%m') AS Thang, SUM(dk.HocPhi) AS DoanhThu
+      SELECT DATE_FORMAT(tt.ThoiGian,'%Y-%m') AS Thang, SUM(${NET_SOTIEN}) AS DoanhThu
       FROM KHOA_HOC kh
       JOIN DANG_KY dk ON dk.MaKH = kh.MaKH
-      JOIN THANH_TOAN tt ON tt.MaDK = dk.MaDK AND ${PAID}
+      JOIN THANH_TOAN tt ON tt.MaDK = dk.MaDK AND tt.TrangThaiTT = 'success'
       WHERE kh.MaGV = ? AND tt.ThoiGian >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
       GROUP BY Thang ORDER BY Thang`, [maGV]);
 
@@ -47,7 +49,7 @@ router.get('/overview', async (req, res) => {
     const [theoKhoa] = await pool.query(`
       SELECT kh.MaKH, kh.TenKH, kh.TrangThai,
              COUNT(DISTINCT dk.MaDK) AS SoLuotDangKy,
-             COALESCE(SUM(CASE WHEN ${PAID} THEN dk.HocPhi END),0) AS DoanhThu
+             COALESCE(SUM(${NET_SOTIEN}),0) AS DoanhThu
       FROM KHOA_HOC kh
       LEFT JOIN DANG_KY dk ON dk.MaKH = kh.MaKH
       LEFT JOIN THANH_TOAN tt ON tt.MaDK = dk.MaDK

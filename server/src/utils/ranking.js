@@ -48,7 +48,8 @@ async function courseBoards(db, maKHs, viewer) {
       WHERE dk.MaKH IN (?) AND dk.TTDangKy <> 'da_huy' AND hv.TrangThaiTK = 'active'
       GROUP BY dk.MaKH, hv.MaHV, hv.HoTen`, [maKHs]);
   const [best] = await db.query(
-    `SELECT bh.MaKH, dk.MaHV, kq.MaBKT, MAX(kq.DiemSo) AS Best, COUNT(*) AS Lan
+    // Best quy đổi về thang 10 theo DiemToiDa của chính bài đó (các bài có thể khác điểm tối đa) — cùng công thức với view V_DIEM_TB.
+    `SELECT bh.MaKH, dk.MaHV, kq.MaBKT, MAX(kq.DiemSo) / bkt.DiemToiDa * 10 AS Best, COUNT(*) AS Lan
        FROM KET_QUA kq JOIN BAI_KIEM_TRA bkt ON bkt.MaBKT = kq.MaBKT AND bkt.TrangThai = 'active'
        JOIN BAI_HOC bh ON bh.MaBH = bkt.MaBH JOIN DANG_KY dk ON dk.MaDK = kq.MaDK
       WHERE bh.MaKH IN (?) AND dk.TTDangKy <> 'da_huy'
@@ -95,7 +96,8 @@ async function globalBoard(db, { tieuChi = 'diem', khoang = 'tatca' } = {}, view
   const fromSql = from ? ' AND kq.ThoiGianLam >= ?' : '';
   const [students] = await db.query(`SELECT MaHV, HoTen FROM HOC_VIEN WHERE TrangThaiTK = 'active'`);
   const [best] = await db.query(
-    `SELECT dk.MaHV, bh.MaKH, kq.MaBKT, MAX(kq.DiemSo) AS Best, MAX(kq.ThoiGianLam) AS Cuoi
+    // Best quy đổi về thang 10 theo DiemToiDa của chính bài đó — cùng công thức với view V_DIEM_TB.
+    `SELECT dk.MaHV, bh.MaKH, kq.MaBKT, MAX(kq.DiemSo) / bkt.DiemToiDa * 10 AS Best, MAX(kq.ThoiGianLam) AS Cuoi
        FROM KET_QUA kq JOIN DANG_KY dk ON dk.MaDK = kq.MaDK
        JOIN BAI_KIEM_TRA bkt ON bkt.MaBKT = kq.MaBKT JOIN BAI_HOC bh ON bh.MaBH = bkt.MaBH
       WHERE dk.TTDangKy <> 'da_huy'${fromSql} GROUP BY dk.MaHV, bh.MaKH, kq.MaBKT`, from ? [from] : []);

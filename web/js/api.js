@@ -92,6 +92,7 @@ window.API = (function () {
     // trình duyệt dữ liệu thô (chỉ xem)
     adminLessons: () => req("GET", "/admin/lessons"),
     adminEnrollments: () => req("GET", "/admin/enrollments"),
+    adminCancelEnrollment: (maDK) => req("POST", "/admin/enrollments/" + maDK + "/cancel"),
     adminQuizzes: () => req("GET", "/admin/quizzes"),
     adminResults: () => req("GET", "/admin/results"),
     adminPayments: () => req("GET", "/admin/payments"),

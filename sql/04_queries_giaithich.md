@@ -34,7 +34,7 @@
 ### 5 🔴 — Điểm trung bình học viên từng khóa (dựa trên điểm cao nhất mỗi bài KT)
 **Vì sao cần:** nếu học viên làm lại bài kiểm tra để cải thiện điểm, công bằng nhất là tính theo điểm **cao nhất đạt được**, không phải điểm lần đầu hay điểm trung bình các lần làm.
 **Kỹ thuật:** subquery `GROUP BY (MaDK, MaBKT)` lấy `MAX(DiemSo)` → gói sẵn trong view `V_DIEM_TB` → `JOIN` rồi `ORDER BY DESC`.
-**Vì sao viết vậy:** tái dùng view thay vì viết lại subquery — đảm bảo mọi nơi cần "điểm trung bình" đều ra cùng 1 số, không có 2 công thức tính khác nhau nằm rải rác trong code.
+**Vì sao viết vậy:** tái dùng view thay vì viết lại subquery — đảm bảo mọi nơi cần "điểm trung bình" đều ra cùng 1 số, không có 2 công thức tính khác nhau nằm rải rác trong code. Từ khi `BAI_KIEM_TRA` có cột `DiemToiDa` (mỗi bài có thể thang điểm khác nhau), `V_DIEM_TB` tự quy đổi `DiemCaoNhat/DiemToiDa*10` trước khi lấy trung bình — câu truy vấn này không đổi gì cả vì chỉ `JOIN` vào view, mọi logic quy đổi nằm gọn trong 1 chỗ.
 
 ---
 
@@ -42,8 +42,8 @@
 
 ### 6 ⭐ — Thống kê hoàn thành / đang học / chưa hoàn thành theo khóa
 **Vì sao cần:** cho admin "sức khỏe" tổng thể của từng khóa theo thời gian — bao nhiêu % học viên đang bỏ dở.
-**Kỹ thuật:** `CASE WHEN` 3 nhánh loại trừ nhau, `SUM` từng nhánh trong cùng 1 `GROUP BY`.
-**Vì sao viết vậy:** nhánh "chưa hoàn thành" dùng `NOT IN ('hoan_thanh','dang_hoc')` — gom cả trạng thái `cho_xac_nhan`, `da_xac_nhan` và `da_huy` vào 1 nhóm, tránh thiếu sót nếu sau này có thêm trạng thái mới (3 nhánh luôn cộng đúng = tổng số đăng ký, không rơi mất dòng nào).
+**Kỹ thuật:** `CASE WHEN` 4 nhánh loại trừ nhau, `SUM` từng nhánh trong cùng 1 `GROUP BY`.
+**Vì sao viết vậy (đã cập nhật theo đề bài bản sửa):** 3 nhóm "đã hoàn thành / đang học / chưa hoàn thành" phải loại trừ lẫn nhau VÀ loại trừ cả lượt đã hủy — nên nhánh "chưa hoàn thành" dùng `NOT IN ('hoan_thanh','dang_hoc','da_huy')` (trước đây gộp `da_huy` vào chung nhóm này, nay tách thành cột `DaHuy` riêng theo đúng yêu cầu "lượt đã hủy được thống kê riêng hoặc loại khỏi 3 nhóm"). 4 nhánh luôn cộng đúng = tổng số đăng ký, không rơi mất dòng nào.
 
 ### 7 — Bài học kèm tên khóa + tên giảng viên
 **Vì sao cần:** phục vụ trang quản lý nội dung — giảng viên/admin xem nhanh bài học thuộc khóa nào, ai dạy, không cần tra 2 lần.
@@ -69,10 +69,10 @@
 
 ## 🟧 THỊNH
 
-### 11 ⭐ — Doanh thu hệ thống theo tháng (chỉ `success`, loại hủy/chưa trả)
+### 11 ⭐ — Doanh thu hệ thống theo tháng (thanh toán thành công trừ hoàn tiền thành công)
 **Vì sao cần:** chỉ số kinh doanh quan trọng nhất — admin cần biết chính xác tiền thực thu mỗi tháng.
-**Kỹ thuật:** `WHERE TrangThaiTT='success' AND LoaiGiaoDich='thanh_toan'`, `SUM`, `GROUP BY` tháng theo `ThoiGian` (ngày **thanh toán**, không phải ngày đăng ký).
-**Vì sao viết vậy:** dùng ngày **thanh toán** để nhóm theo tháng, không dùng ngày **đăng ký** — vì 1 người có thể đăng ký tháng 7 nhưng trả tiền thành công tháng 8; doanh thu phải ghi nhận vào tháng **tiền về thực tế**. Đăng ký đã hủy/chưa thanh toán tự động không có dòng `success` nên không cần thêm điều kiện loại trừ riêng.
+**Kỹ thuật:** `SUM(CASE WHEN LoaiGiaoDich='thanh_toan' THEN SoTien ELSE -SoTien END)` chỉ trên các dòng `TrangThaiTT='success'`, `GROUP BY` tháng theo `ThoiGian` (ngày **giao dịch**, không phải ngày đăng ký).
+**Vì sao viết vậy (đã cập nhật theo đề bài bản sửa):** trước đây chỉ cộng `thanh_toan` thành công và lấy số tiền từ `DANG_KY.HocPhi`. Đề bài bản sửa yêu cầu trừ cả hoàn tiền, nên: (1) thêm cột `THANH_TOAN.SoTien` riêng — không dùng `HocPhi` nữa vì 1 khoản hoàn có thể khác học phí gốc; (2) khi hủy đăng ký, hệ thống tự ghi 1 dòng `hoan_tien` thành công (không xóa dòng `thanh_toan` cũ, tránh tính trùng/tính thiếu — đúng quy tắc "điều chỉnh bằng giao dịch hoàn tiền, không xóa khoản thu đã ghi nhận"); (3) `CASE WHEN` cộng dòng mua, trừ dòng hoàn, dùng chung ngày **giao dịch** để nhóm theo tháng vì 1 người có thể đăng ký tháng 7 nhưng trả/hủy&hoàn ở tháng khác.
 
 ### 12 ⭐ — Đánh giá/nhận xét theo khóa học, theo mốc thời gian
 **Vì sao cần:** theo dõi phản hồi học viên theo thời gian — phát hiện sớm nếu 1 khóa bắt đầu bị đánh giá kém sau khi sửa nội dung.

@@ -87,12 +87,12 @@ INSERT INTO KET_QUA (MaKQ, MaDK, MaBKT, LanLam, DiemSo, ThoiGianLam) VALUES
 ('KQ004', 'DK002', 'BKT001', 1, 6.67, '2026-08-07 14:20:00'),
 ('KQ005', 'DK003', 'BKT003', 1, 10.00, '2026-08-16 08:20:00');
 
--- ───────── THANH TOÁN (không cột SoTien; số tiền = DANG_KY.HocPhi) ─────────
-INSERT INTO THANH_TOAN (MaTT, MaDK, PhuongThucTT, LoaiGiaoDich, ThoiGian, TrangThaiTT) VALUES
-('TT001', 'DK001', N'Chuyển khoản',  'thanh_toan', '2026-08-02 09:00:00', 'success'),
-('TT002', 'DK002', N'Thẻ tín dụng',  'thanh_toan', '2026-08-06 09:00:00', 'failed'),
-('TT003', 'DK002', N'Thẻ tín dụng',  'thanh_toan', '2026-08-06 09:15:00', 'success'),
-('TT004', 'DK005', N'Ví điện tử',    'thanh_toan', '2026-09-01 10:00:00', 'success');
+-- ───────── THANH TOÁN (SoTien = HocPhi tại thời điểm trả; với 'hoan_tien' là số tiền hoàn) ─────────
+INSERT INTO THANH_TOAN (MaTT, MaDK, SoTien, PhuongThucTT, LoaiGiaoDich, ThoiGian, TrangThaiTT) VALUES
+('TT001', 'DK001', 499000, N'Chuyển khoản',  'thanh_toan', '2026-08-02 09:00:00', 'success'),
+('TT002', 'DK002', 499000, N'Thẻ tín dụng',  'thanh_toan', '2026-08-06 09:00:00', 'failed'),
+('TT003', 'DK002', 499000, N'Thẻ tín dụng',  'thanh_toan', '2026-08-06 09:15:00', 'success'),
+('TT004', 'DK005', 499000, N'Ví điện tử',    'thanh_toan', '2026-09-01 10:00:00', 'success');
 -- DK003 học khóa miễn phí (HocPhi = 0) nên không có giao dịch
 
 -- ───────── CHỨNG CHỈ (DK001 hoàn thành) ─────────

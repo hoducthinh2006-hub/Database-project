@@ -1081,6 +1081,11 @@ INSERT INTO THANH_TOAN (MaTT, MaDK, PhuongThucTT, LoaiGiaoDich, ThoiGian, TrangT
 ('TT096', 'DK129', N'Ví điện tử', 'thanh_toan', '2026-10-18 19:28:00', 'success'),
 ('TT097', 'DK133', N'Chuyển khoản', 'thanh_toan', '2026-10-19 12:53:53', 'success');
 
+-- SoTien không liệt kê ở trên (schema mới có cột riêng) → backfill bằng đúng học phí của lượt đăng ký tại thời điểm trả
+UPDATE THANH_TOAN tt JOIN DANG_KY dk ON dk.MaDK = tt.MaDK
+   SET tt.SoTien = dk.HocPhi
+ WHERE tt.LoaiGiaoDich = 'thanh_toan';
+
 -- ───────── CHỨNG CHỈ (các lượt đã hoàn thành) ─────────
 INSERT INTO CHUNG_CHI (MaCC, MaDK, NgayCap, HieuLuc) VALUES
 ('CC002', 'DK009', '2026-07-29', 'con_hieu_luc'),

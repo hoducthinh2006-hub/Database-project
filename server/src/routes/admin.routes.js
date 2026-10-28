@@ -11,8 +11,12 @@ router.use(auth, adminOnly);
 
 // Ghi nhật ký các thao tác nhạy cảm của quản trị viên (ra console của server — xem được bằng log của hosting)
 const audit = (req, msg) => console.info(`[N9][audit] admin ${req.user.ma}: ${msg}`);
-// Doanh thu chỉ tính giao dịch THANH TOÁN thành công — cùng định nghĩa với báo cáo #11 của nhóm
-const PAID = `tt.TrangThaiTT = 'success' AND tt.LoaiGiaoDich = 'thanh_toan'`;
+// Doanh thu RÒNG = tổng giao dịch 'thanh_toan' thành công TRỪ tổng 'hoan_tien' thành công — cùng định nghĩa với báo cáo #11 của nhóm.
+// Dùng tt.SoTien (không dùng dk.HocPhi) vì 1 khoản hoàn tiền có thể khác học phí gốc.
+const PAID = `tt.TrangThaiTT = 'success' AND tt.LoaiGiaoDich = 'thanh_toan'`; // 1 giao dịch MUA thành công (lọc theo JOIN, không cộng tiền)
+const NET_SOTIEN = `CASE WHEN tt.TrangThaiTT = 'success' AND tt.LoaiGiaoDich = 'thanh_toan' THEN tt.SoTien
+                         WHEN tt.TrangThaiTT = 'success' AND tt.LoaiGiaoDich = 'hoan_tien'  THEN -tt.SoTien
+                         ELSE 0 END`;
 
 // ─────────────────────────────────────────────
 // GET /api/admin/overview — số liệu tổng quan cho dashboard
@@ -27,28 +31,29 @@ router.get('/overview', async (req, res) => {
       (SELECT COUNT(*) FROM KHOA_HOC WHERE TrangThai='published') AS SoKhoaHocCongKhai,
       (SELECT COUNT(*) FROM DANG_KY)    AS SoDangKy`);
 
-    // Doanh thu 6 tháng gần nhất (chỉ giao dịch thành công) — câu #11
+    // Doanh thu ròng 6 tháng gần nhất (trừ hoàn tiền) — câu #11
     const [doanhThu6Thang] = await pool.query(`
-      SELECT DATE_FORMAT(tt.ThoiGian,'%Y-%m') AS Thang, SUM(dk.HocPhi) AS DoanhThu
-      FROM THANH_TOAN tt JOIN DANG_KY dk ON dk.MaDK = tt.MaDK
-      WHERE ${PAID}
+      SELECT DATE_FORMAT(tt.ThoiGian,'%Y-%m') AS Thang, SUM(${NET_SOTIEN}) AS DoanhThu
+      FROM THANH_TOAN tt
+      WHERE tt.TrangThaiTT = 'success'
         AND tt.ThoiGian >= DATE_SUB(CURDATE(), INTERVAL 6 MONTH)
       GROUP BY Thang ORDER BY Thang`);
 
     const [[thangNay]] = await pool.query(`
-      SELECT COALESCE(SUM(dk.HocPhi),0) AS DoanhThuThangNay
-      FROM THANH_TOAN tt JOIN DANG_KY dk ON dk.MaDK = tt.MaDK
-      WHERE ${PAID}
+      SELECT COALESCE(SUM(${NET_SOTIEN}),0) AS DoanhThuThangNay
+      FROM THANH_TOAN tt
+      WHERE tt.TrangThaiTT = 'success'
         AND YEAR(tt.ThoiGian)=YEAR(CURDATE()) AND MONTH(tt.ThoiGian)=MONTH(CURDATE())`);
 
-    // Top 5 khóa doanh thu cao nhất — câu #9
+    // Top 5 khóa doanh thu ròng cao nhất — câu #9
     const [topKhoaHoc] = await pool.query(`
-      SELECT kh.MaKH, kh.TenKH, gv.HoTen AS TenGV, SUM(dk.HocPhi) AS DoanhThu, COUNT(DISTINCT dk.MaDK) AS SoLuotDangKy
+      SELECT kh.MaKH, kh.TenKH, gv.HoTen AS TenGV, SUM(${NET_SOTIEN}) AS DoanhThu, COUNT(DISTINCT dk.MaDK) AS SoLuotDangKy
       FROM KHOA_HOC kh
       JOIN GIANG_VIEN gv ON gv.MaGV = kh.MaGV
       JOIN DANG_KY dk ON dk.MaKH = kh.MaKH
-      JOIN THANH_TOAN tt ON tt.MaDK = dk.MaDK AND ${PAID}
+      JOIN THANH_TOAN tt ON tt.MaDK = dk.MaDK AND tt.TrangThaiTT = 'success'
       GROUP BY kh.MaKH, kh.TenKH, gv.HoTen
+      HAVING DoanhThu > 0
       ORDER BY DoanhThu DESC LIMIT 5`);
 
     // Khóa học đang chờ xử lý (draft) — cần admin chú ý
@@ -71,7 +76,7 @@ router.get('/teachers', async (req, res) => {
       SELECT gv.MaGV, gv.HoTen, gv.Email, gv.ChuyenMon, gv.TrinhDo, gv.TrangThaiTK,
              COUNT(DISTINCT kh.MaKH) AS SoKhoaHoc,
              COUNT(DISTINCT dk.MaHV) AS SoHocVien,
-             COALESCE(SUM(CASE WHEN ${PAID} THEN dk.HocPhi END),0) AS TongDoanhThu
+             COALESCE(SUM(${NET_SOTIEN}),0) AS TongDoanhThu
       FROM GIANG_VIEN gv
       LEFT JOIN KHOA_HOC kh ON kh.MaGV = gv.MaGV
       LEFT JOIN DANG_KY dk ON dk.MaKH = kh.MaKH
@@ -145,7 +150,7 @@ router.get('/students', async (req, res) => {
     const [rows] = await pool.query(`
       SELECT hv.MaHV, hv.HoTen, hv.Email, hv.NgayDK, hv.TrangThaiTK,
              COUNT(DISTINCT dk.MaDK) AS SoLuotDangKy,
-             COALESCE(SUM(CASE WHEN ${PAID} THEN dk.HocPhi END),0) AS TongChiTieu
+             COALESCE(SUM(${NET_SOTIEN}),0) AS TongChiTieu
       FROM HOC_VIEN hv
       LEFT JOIN DANG_KY dk ON dk.MaHV = hv.MaHV
       LEFT JOIN THANH_TOAN tt ON tt.MaDK = dk.MaDK
@@ -168,7 +173,7 @@ router.get('/courses', async (req, res) => {
              gv.HoTen AS TenGV, gv.MaGV,
              (SELECT COUNT(*) FROM BAI_HOC bh WHERE bh.MaKH=kh.MaKH) AS SoBaiHoc,
              COUNT(DISTINCT dk.MaDK) AS SoLuotDangKy,
-             COALESCE(SUM(CASE WHEN ${PAID} THEN dk.HocPhi END),0) AS DoanhThu
+             COALESCE(SUM(${NET_SOTIEN}),0) AS DoanhThu
       FROM KHOA_HOC kh
       JOIN GIANG_VIEN gv ON gv.MaGV = kh.MaGV
       LEFT JOIN DANG_KY dk ON dk.MaKH = kh.MaKH
@@ -211,12 +216,12 @@ browse('/enrollments', `
   ORDER BY dk.NgayDangKy DESC LIMIT 500`);
 
 browse('/quizzes', `
-  SELECT bkt.MaBKT, bkt.TenBKT, bh.TenBH, kh.TenKH, bkt.ThoiGian, bkt.TrangThai, bkt.SoLanLamToiDa
+  SELECT bkt.MaBKT, bkt.TenBKT, bh.TenBH, kh.TenKH, bkt.ThoiGian, bkt.TrangThai, bkt.SoLanLamToiDa, bkt.DiemToiDa
   FROM BAI_KIEM_TRA bkt JOIN BAI_HOC bh ON bh.MaBH = bkt.MaBH JOIN KHOA_HOC kh ON kh.MaKH = bh.MaKH
   ORDER BY kh.MaKH, bh.ThuTu`);
 
 browse('/results', `
-  SELECT kq.MaKQ, hv.HoTen AS TenHV, kh.TenKH, bkt.TenBKT, kq.LanLam, kq.DiemSo, kq.ThoiGianLam
+  SELECT kq.MaKQ, hv.HoTen AS TenHV, kh.TenKH, bkt.TenBKT, kq.LanLam, kq.DiemSo, bkt.DiemToiDa, kq.ThoiGianLam
   FROM KET_QUA kq
   JOIN DANG_KY dk ON dk.MaDK = kq.MaDK
   JOIN HOC_VIEN hv ON hv.MaHV = dk.MaHV
@@ -225,7 +230,7 @@ browse('/results', `
   ORDER BY kq.ThoiGianLam DESC LIMIT 500`);
 
 browse('/payments', `
-  SELECT tt.MaTT, hv.HoTen AS TenHV, kh.TenKH, dk.HocPhi, tt.PhuongThucTT, tt.LoaiGiaoDich, tt.ThoiGian, tt.TrangThaiTT
+  SELECT tt.MaTT, dk.MaDK, hv.HoTen AS TenHV, kh.TenKH, tt.SoTien, tt.PhuongThucTT, tt.LoaiGiaoDich, tt.ThoiGian, tt.TrangThaiTT
   FROM THANH_TOAN tt
   JOIN DANG_KY dk ON dk.MaDK = tt.MaDK
   JOIN HOC_VIEN hv ON hv.MaHV = dk.MaHV
@@ -243,7 +248,7 @@ router.post('/payments/:maTT/approve', async (req, res) => {
       const [[tt]] = await conn.query('SELECT MaTT, MaDK, TrangThaiTT FROM THANH_TOAN WHERE MaTT = ? FOR UPDATE', [maTT]);
       if (!tt) throw notFound('Không tìm thấy giao dịch');
       if (tt.TrangThaiTT !== 'pending') throw conflict('Giao dịch không ở trạng thái chờ duyệt', 'NOT_PENDING');
-      const [[already]] = await conn.query(`SELECT 1 AS x FROM THANH_TOAN WHERE MaDK = ? AND TrangThaiTT = 'success'`, [tt.MaDK]);
+      const [[already]] = await conn.query(`SELECT 1 AS x FROM THANH_TOAN WHERE MaDK = ? AND TrangThaiTT = 'success' AND LoaiGiaoDich = 'thanh_toan'`, [tt.MaDK]);
       if (already) throw conflict('Lượt đăng ký này đã có giao dịch thành công khác', 'ALREADY_PAID');
       await conn.query(`UPDATE THANH_TOAN SET TrangThaiTT = 'success' WHERE MaTT = ?`, [maTT]);
       // học viên lỡ gửi yêu cầu nhiều lần cho cùng 1 lượt đăng ký → các dòng 'pending' còn lại tự hủy, tránh duyệt nhầm lần 2
@@ -263,6 +268,35 @@ router.post('/payments/:maTT/reject', async (req, res) => {
     await pool.query(`UPDATE THANH_TOAN SET TrangThaiTT = 'failed' WHERE MaTT = ?`, [maTT]);
     audit(req, `từ chối thanh toán ${maTT}${lyDo ? ' — ' + lyDo : ''}`);
     res.json({ ok: true });
+  } catch (e) { fail(res, e); }
+});
+
+// ─────────────────────────────────────────────
+// HỦY ĐĂNG KÝ (+ HOÀN TIỀN) — nếu lượt đăng ký đã có giao dịch 'thanh_toan' thành công, tự
+// tạo 1 giao dịch 'hoan_tien' thành công bằng đúng số tiền đã thu, KHÔNG xóa giao dịch cũ
+// (đúng quy tắc doanh thu #11: điều chỉnh bằng dòng hoàn tiền, không xóa khoản thu đã ghi nhận).
+// ─────────────────────────────────────────────
+router.post('/enrollments/:maDK/cancel', async (req, res) => {
+  try {
+    const maDK = v.code(req.params.maDK, 'Mã đăng ký');
+    const out = await withTx(pool, async (conn) => {
+      const [[dk]] = await conn.query('SELECT MaDK, TTDangKy FROM DANG_KY WHERE MaDK = ? FOR UPDATE', [maDK]);
+      if (!dk) throw notFound('Không tìm thấy lượt đăng ký');
+      if (dk.TTDangKy === 'da_huy') throw conflict('Lượt đăng ký này đã hủy rồi', 'ALREADY_CANCELLED');
+      const [[paid]] = await conn.query(
+        `SELECT COALESCE(SUM(SoTien),0) AS da_tra FROM THANH_TOAN WHERE MaDK = ? AND TrangThaiTT = 'success' AND LoaiGiaoDich = 'thanh_toan'`, [maDK]);
+      const daTra = Number(paid.da_tra);
+      await conn.query(`UPDATE DANG_KY SET TTDangKy = 'da_huy', NgayHuy = CURRENT_DATE WHERE MaDK = ?`, [maDK]);
+      let MaTT = null;
+      if (daTra > 0) {
+        MaTT = await insertWithCode(pool, 'THANH_TOAN', 'MaTT', 'TT', (code) => conn.query(
+          `INSERT INTO THANH_TOAN(MaTT, MaDK, SoTien, PhuongThucTT, LoaiGiaoDich, TrangThaiTT) VALUES(?,?,?,?,'hoan_tien','success')`,
+          [code, maDK, daTra, 'Hoàn tiền']));
+      }
+      return { daTra, MaTT };
+    });
+    audit(req, `hủy đăng ký ${maDK}${out.MaTT ? ` — hoàn ${out.daTra}đ (giao dịch ${out.MaTT})` : ''}`);
+    res.json({ ok: true, ...out });
   } catch (e) { fail(res, e); }
 });
 
