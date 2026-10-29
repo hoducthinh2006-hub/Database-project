@@ -34,8 +34,8 @@
   const app = $("#app");
   const vnd = (n) => (Number(n) || 0).toLocaleString("vi-VN") + "₫";
   const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  // Điểm đánh giá thang 0-10 (không còn 5 sao) — hiện 1 icon ⭐ + số, nguyên thì khỏi phần thập phân, TB (AVG) thì giữ 1 số lẻ
-  const stars = (n) => { const x = Number(n) || 0; return `⭐ ${Number.isInteger(x) ? x : x.toFixed(1)}`; };
+  // Điểm đánh giá thang 0-10 — hiện "x/10", nguyên thì khỏi phần thập phân, TB (AVG) thì giữ 1 số lẻ
+  const ratingTxt = (n) => { const x = Number(n) || 0; return `${Number.isInteger(x) ? x : x.toFixed(1)}/10`; };
   function toast(msg) {
     const t = $("#toast"); t.innerHTML = ico("info") + `<span>${esc(msg)}</span>`;
     t.classList.remove("show"); void t.offsetWidth; t.classList.add("show"); // gỡ rồi thêm lại để hiệu ứng trượt lên + thanh đếm giờ chạy lại ở mỗi thông báo
@@ -271,7 +271,7 @@
     if (!role) {
       const list = topRated(4);
       if (!list.length) return "";
-      return `<div class="sb-sec"><span>Nổi bật</span>${ico("sparkle")}</div>` + list.map((c) => `<button class="rc-item" data-open="${c.MaKH}"><b>${esc(c.TenKH)}</b><span>${esc(c.TenGV || "")}${c.DiemTB != null ? " · ★ " + Number(c.DiemTB).toFixed(1) : ""}</span></button>`).join("");
+      return `<div class="sb-sec"><span>Nổi bật</span>${ico("sparkle")}</div>` + list.map((c) => `<button class="rc-item" data-open="${c.MaKH}"><b>${esc(c.TenKH)}</b><span>${esc(c.TenGV || "")}${c.DiemTB != null ? " · " + ratingTxt(c.DiemTB) : ""}</span></button>`).join("");
     }
     return "";
   }
@@ -406,7 +406,7 @@
       const q = inp.value.trim(), t = fold(q);
       const hits = (t ? COURSES.filter((c) => fold(`${c.TenKH} ${c.TenGV || ""} ${c.LinhVuc || ""}`).includes(t)) : topRated(4)).slice(0, 6);
       pop.innerHTML = `<div class="gs-label">${t ? "Khóa học" : "Gợi ý cho bạn"}</div>`
-        + (hits.length ? hits.map((c) => { const th = themeOf(c); return `<button class="gs-item" role="option" data-gs-open="${c.MaKH}"><span class="gs-th" style="background:${th.grad}">${th.glyph}</span><span class="gs-tx"><b>${esc(c.TenKH)}</b><span>${esc(c.TenGV || "")} · ${esc(c.LinhVuc || "")}</span></span>${c.DiemTB != null ? `<span class="gs-rate">${ico("star", "fill")}${Number(c.DiemTB).toFixed(1)}</span>` : ""}</button>`; }).join("")
+        + (hits.length ? hits.map((c) => { const th = themeOf(c); return `<button class="gs-item" role="option" data-gs-open="${c.MaKH}"><span class="gs-th" style="background:${th.grad}">${th.glyph}</span><span class="gs-tx"><b>${esc(c.TenKH)}</b><span>${esc(c.TenGV || "")} · ${esc(c.LinhVuc || "")}</span></span>${c.DiemTB != null ? `<span class="gs-rate">${ratingTxt(c.DiemTB)}</span>` : ""}</button>`; }).join("")
           : `<div class="gs-empty">Không tìm thấy khóa học phù hợp.</div>`)
         + (t ? `<button class="gs-all" data-gs-all>${ico("search")} Xem tất cả kết quả cho “${esc(q)}” ${ico("arrow-r")}</button>` : "");
       items = $$(".gs-item, .gs-all", pop); idx = -1;
@@ -677,7 +677,7 @@
         <span class="glyph">${th.glyph}</span>
       </div>
       <div class="body">
-        <div class="rating">${rating != null ? `<span class="stars">${stars(rating)}</span><span class="muted rcount">(${c.SoDanhGia || 0})</span>` : `<span class="muted">Chưa có đánh giá</span>`}${c.TrangThai && c.TrangThai !== "published" ? statusBadge(c.TrangThai) : ""}</div>
+        <div class="rating">${rating != null ? `<span class="stars">${ratingTxt(rating)}</span><span class="muted rcount">(${c.SoDanhGia || 0})</span>` : `<span class="muted">Chưa có đánh giá</span>`}${c.TrangThai && c.TrangThai !== "published" ? statusBadge(c.TrangThai) : ""}</div>
         <h3>${esc(c.TenKH)}</h3>
         <div class="gv"><span class="gv-ava">${esc((c.TenGV || "?").split(" ").pop()[0])}</span>${esc(c.TenGV)}</div>
         <div class="metarow">
@@ -779,13 +779,13 @@
     const feat = best ? `<article class="rcard rc-feature">
         <div class="rf-tag">Nổi bật ${ico("sparkle")}</div>
         <h4>${esc(best.TenKH)}</h4>
-        <p>${esc(best.TenGV || "")}${best.DiemTB != null ? ` · ★ ${num(best.DiemTB).toFixed(1)}` : ""}</p>
+        <p>${esc(best.TenGV || "")}${best.DiemTB != null ? ` · ${ratingTxt(best.DiemTB)}` : ""}</p>
         <button class="btn btn-primary btn-sm rf-go" data-open="${best.MaKH}">Xem khóa học ${ico("arrow-r")}</button>
         ${ART_SVG}
       </article>` : "";
     const rank = `<article class="rcard">
         <div class="rc-head"><span title="Xếp theo điểm đánh giá có trọng số: khóa ít lượt đánh giá không thể vượt khóa được nhiều người đánh giá cao">Xếp hạng đánh giá</span><button class="lnk" data-rank-view>Xem tất cả</button></div>
-        ${ranked.length ? ranked.map((c, i) => `<button class="rk" data-open="${c.MaKH}"><span class="rk-n r${i + 1}">${i + 1}</span><span class="rk-t">${esc(c.TenKH)}<small>${esc(c.TenGV || "")} · ${num(c.SoHocVien)} học viên</small></span><span class="rk-r">${ico("star")}${num(c.DiemTB).toFixed(1)}<small>(${num(c.SoDanhGia)})</small></span></button>`).join("") : `<p class="muted" style="font-size:.84rem">Chưa có đánh giá nào — hãy là người đầu tiên.</p>`}
+        ${ranked.length ? ranked.map((c, i) => `<button class="rk" data-open="${c.MaKH}"><span class="rk-n r${i + 1}">${i + 1}</span><span class="rk-t">${esc(c.TenKH)}<small>${esc(c.TenGV || "")} · ${num(c.SoHocVien)} học viên</small></span><span class="rk-r">${ratingTxt(c.DiemTB)}<small>(${num(c.SoDanhGia)})</small></span></button>`).join("") : `<p class="muted" style="font-size:.84rem">Chưa có đánh giá nào — hãy là người đầu tiên.</p>`}
       </article>`;
     const honor = `<article class="rcard" id="honorRail"><div class="rc-head"><span>Vinh danh</span><button class="lnk" data-go="honor">Xem tất cả</button></div>${inlineLoading()}</article>`;
     let act = "";
@@ -801,7 +801,7 @@
       act = `<article class="rcard"><div class="rc-head"><span>Giảng dạy của bạn</span><button class="lnk" data-nav-go="manage:overview">Chi tiết</button></div>
         <div class="stat-row"><span>Khóa học</span><b>${mine.length}</b></div>
         <div class="stat-row"><span>Lượt học viên</span><b>${mine.reduce((s, c) => s + num(c.SoHocVien), 0)}</b></div>
-        <div class="stat-row"><span>Đánh giá trung bình</span><b>${rated.length ? (rated.reduce((s, c) => s + num(c.DiemTB), 0) / rated.length).toFixed(1) + " ★" : "—"}</b></div></article>`;
+        <div class="stat-row"><span>Đánh giá trung bình</span><b>${rated.length ? ratingTxt(rated.reduce((s, c) => s + num(c.DiemTB), 0) / rated.length) : "—"}</b></div></article>`;
     } else {
       act = `<article class="rcard"><div class="rc-head"><span>N9 trong con số</span></div>
         <div class="stat-row"><span>Khóa học</span><b>${pub.length}</b></div>
@@ -1230,7 +1230,7 @@
           <span>📝 ${c.SoBaiKTDaLam}/${c.SoBaiKT} bài kiểm tra</span>
           <span class="${c.DiemTB != null ? "sc-" + scoreCls(c.DiemTB) : ""}">🎯 Điểm TB ${fmtScore(c.DiemTB)}</span>
           ${c.Hang ? `<span>🏆 Hạng ${c.Hang}/${c.TongHang}</span>` : ""}
-          ${c.DiemDanhGia != null ? `<span class="stars" title="Đánh giá của bạn">${stars(c.DiemDanhGia)}</span>` : ""}
+          ${c.DiemDanhGia != null ? `<span class="stars" title="Đánh giá của bạn">${ratingTxt(c.DiemDanhGia)}</span>` : ""}
         </div>
       </div>
       <div class="lc-right">
@@ -1615,7 +1615,7 @@
           <div><b>${ov.SoKhoaHoc ?? list.length}</b><span>Khóa học</span></div>
           <div><b>${ov.SoHocVien ?? 0}</b><span>Học viên</span></div>
           <div><b>${vnd(ov.TongDoanhThu || 0)}</b><span>Tổng doanh thu</span></div>
-          <div><b>${ov.DiemTB != null ? ov.DiemTB + "★" : "—"}</b><span>${ov.SoDanhGia || 0} đánh giá</span></div>
+          <div><b>${ov.DiemTB != null ? ratingTxt(ov.DiemTB) : "—"}</b><span>${ov.SoDanhGia || 0} đánh giá</span></div>
         </div>
       </div>
       <div class="tabs mtab">${tabs.map(([v, l]) => `<button class="${nav.mtab === v ? "active" : ""}" data-mtab="${v}">${l}</button>`).join("")}</div>
@@ -1649,7 +1649,7 @@
     if (!list.length) return `<div class="empty-state"><div class="es-ic">⭐</div><h3>Chưa có đánh giá</h3><p>Đánh giá từ học viên sẽ hiện ở đây.</p></div>`;
     return `<div class="review-list">${list.map((r) => `
       <div class="review-row">
-        <div class="rr-top"><b>${esc(r.HoTen)}</b><span class="stars">${stars(r.DiemDanhGia)}</span><span class="muted">· ${esc(r.TenKH)}</span><span class="muted" style="margin-left:auto">${esc(String(r.NgayDG).slice(0, 10))}</span></div>
+        <div class="rr-top"><b>${esc(r.HoTen)}</b><span class="stars">${ratingTxt(r.DiemDanhGia)}</span><span class="muted">· ${esc(r.TenKH)}</span><span class="muted" style="margin-left:auto">${esc(String(r.NgayDG).slice(0, 10))}</span></div>
         ${r.NhanXet ? `<p class="rr-text">${esc(r.NhanXet)}</p>` : ""}
       </div>`).join("")}</div>`;
   }
@@ -1735,7 +1735,7 @@
       ? [["Số điện thoại", p.SoDienThoai], ["Ngày sinh", p.NgaySinh && String(p.NgaySinh).slice(0, 10)], ["Ngày tham gia", p.NgayDK && String(p.NgayDK).slice(0, 10)]]
       : [];
     const stats = p.role === "teacher"
-      ? [["📚", p.SoKhoaHoc || 0, "Khóa học phụ trách"], ["👥", p.SoHocVien || 0, "Học viên theo học"], ["⭐", p.DiemDanhGiaTB != null ? p.DiemDanhGiaTB : "—", "Điểm đánh giá TB"]]
+      ? [["📚", p.SoKhoaHoc || 0, "Khóa học phụ trách"], ["👥", p.SoHocVien || 0, "Học viên theo học"], ["📈", p.DiemDanhGiaTB != null ? ratingTxt(p.DiemDanhGiaTB) : "—", "Điểm đánh giá TB"]]
       : p.role === "student"
       ? [["📚", p.SoKhoaHocDaDK || 0, "Khóa đã đăng ký"], ["✅", p.SoKhoaHocHoanThanh || 0, "Khóa đã hoàn thành"], ["🏅", p.SoChungChi || 0, "Chứng chỉ đạt được"]]
       : [];
@@ -2084,7 +2084,7 @@
       ${list.map((r) => `<tr>
         <td><b>${esc(r.TenHV)}</b></td>
         <td class="muted">${esc(r.TenKH)}</td>
-        <td class="tnum">${stars(r.DiemDanhGia)}</td>
+        <td class="tnum">${ratingTxt(r.DiemDanhGia)}</td>
         <td class="muted">${esc(r.NhanXet || "—")}</td>
         <td class="muted">${esc(String(r.NgayDG).slice(0, 10))}</td>
       </tr>`).join("")}
