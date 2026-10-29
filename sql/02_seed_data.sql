@@ -101,5 +101,5 @@ INSERT INTO CHUNG_CHI (MaCC, MaDK, NgayCap, HieuLuc) VALUES
 
 -- ───────── ĐÁNH GIÁ (mỗi đăng ký tối đa 1 đánh giá) ─────────
 INSERT INTO DANH_GIA (MaDG, MaDK, DiemDanhGia, NhanXet, NgayDG) VALUES
-('DG001', 'DK001', 5, N'Khóa học dễ hiểu, giảng viên nhiệt tình', '2026-08-06'),
-('DG002', 'DK002', 4, N'Nội dung ổn nhưng hơi nhanh', '2026-08-08');
+('DG001', 'DK001', 10, N'Khóa học dễ hiểu, giảng viên nhiệt tình', '2026-08-06'),
+('DG002', 'DK002', 8, N'Nội dung ổn nhưng hơi nhanh', '2026-08-08');
