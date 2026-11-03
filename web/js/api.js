@@ -1,5 +1,3 @@
-// Lớp gọi API tới backend N9. Mở qua Live Server/file trực tiếp thì BASE trỏ sang localhost:3000, còn lại cùng origin.
-// Lỗi ném ra có thêm: err.code, err.status, err.retryAfter (giây, nếu bị giới hạn tần suất).
 window.API = (function () {
   const isLive = location.port === "5500" || location.protocol === "file:";
   const BASE = isLive ? "http://localhost:3000" : "";

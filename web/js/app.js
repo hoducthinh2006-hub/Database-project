@@ -260,7 +260,7 @@
   function sidebarHTML(role) {
     const v = nav.view;
     const home = sbItem("home", "home", "Trang chủ", v === "home", () => go("home"));
-    const explore = (on) => sbItem("catalog", "compass", "Khám phá khóa học", on, () => { catState.cat = "all"; catState.q = ""; go("catalog"); });
+    const explore = (on) => sbItem("catalog", "compass", "Khám phá khóa học", on, () => { catState.cat = "all"; catState.q = ""; catState.sort = "new"; go("catalog"); });
     const honor = sbItem("honor", "crown", "Vinh danh", v === "honor", () => go("honor"));
     if (role === "student") {
       const k = (STU.overview && STU.overview.kpi) || {};
@@ -1937,7 +1937,7 @@
     <section class="wrap" style="padding-top:12px">
       <div class="learn-hero admin-hero">
         <span class="eyebrow">N9 · Quản trị hệ thống</span>
-        <h2>Xin chào, ${esc(AUTH.user.ten)}</h2>
+        <h2>Xin chào! ${esc(AUTH.user.ten)}</h2>
         <p>Theo dõi toàn bộ hoạt động nền tảng — giảng viên, học viên, khóa học và doanh thu.</p>
         <div class="lh-stats tnum">
           <div><b>${ov.SoHocVien ?? 0}</b><span>Học viên</span></div>
@@ -1970,7 +1970,7 @@
   function adminTeachersTab() {
     const list = ADMIN.teachers || [];
     return `
-    <div class="sec-head"><div><h2 style="font-size:1.2rem">Giảng viên</h2><p class="muted">Admin trực tiếp cấp tài khoản — giảng viên không tự đăng ký.</p></div>
+    <div class="sec-head"><div><h2 style="font-size:1.2rem">Giảng viên</h2></div>
       <button class="btn btn-accent" data-add-teacher>+ Cấp tài khoản giảng viên</button></div>
     ${list.length ? `<table class="data-table"><thead><tr><th>Giảng viên</th><th>Chuyên môn</th><th>Khóa học</th><th>Học viên</th><th>Doanh thu</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${list.map((t) => `<tr>
@@ -2082,7 +2082,7 @@
     const list = ADMIN.payments || [];
     if (!list.length) return `<div class="empty-state"><div class="es-ic">💳</div><h3>Chưa có giao dịch</h3></div>`;
     const pendingN = list.filter((t) => t.TrangThaiTT === "pending").length;
-    return `<p class="muted" style="margin-bottom:14px">Tối đa 500 giao dịch gần nhất. Doanh thu hệ thống chỉ tính dòng trạng thái "Thành công" — duyệt các dòng "Đang chờ" để mở khóa nội dung cho học viên.${pendingN ? ` <b>${pendingN} giao dịch đang chờ duyệt.</b>` : ""}</p>
+    return `${pendingN ? `<p class="muted" style="margin-bottom:14px"><b>${pendingN} giao dịch đang chờ duyệt.</b></p>` : ""}
     <table class="data-table"><thead><tr><th>Học viên</th><th>Khóa học</th><th>Số tiền</th><th>Phương thức</th><th>Loại GD</th><th>Thời gian</th><th>Trạng thái</th><th></th></tr></thead><tbody>
       ${list.map((t) => `<tr class="${t.TrangThaiTT === "pending" ? "row-pending" : ""}">
         <td><b>${esc(t.TenHV)}</b></td>
