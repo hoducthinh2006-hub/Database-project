@@ -84,14 +84,16 @@ window.N9Motion = (function () {
       const act = $("button.active", c); if (!act) return;
       let ind = $(".pill-ind", c);
       if (!ind) { ind = doc.createElement("i"); ind.className = "pill-ind"; ind.setAttribute("aria-hidden", "true"); c.prepend(ind); c.classList.add("has-ind"); }
-      const left = act.offsetLeft, w = act.offsetWidth, k = key + "#" + idx;
-      ind.style.cssText = `left:${left}px;width:${w}px`;
+      // top/height tính riêng (không chỉ left/width): hàng tab nhiều mục có thể bị wrap xuống 2 dòng,
+      // nếu để CSS top/bottom:5px tự co giãn thì viên thuốc sẽ kéo dài hết chiều cao cả khối thay vì chỉ ôm dòng chứa mục đang chọn
+      const left = act.offsetLeft, top = act.offsetTop, w = act.offsetWidth, h = act.offsetHeight, k = key + "#" + idx;
+      ind.style.cssText = `left:${left}px;top:${top}px;width:${w}px;height:${h}px`;
       // hàng tab dài (điện thoại) bị cuộn ngang: đưa tab đang chọn vào giữa tầm nhìn
       if (c.scrollWidth > c.clientWidth + 2) c.scrollTo({ left: Math.max(0, left - (c.clientWidth - w) / 2), behavior: CAN && animate ? "smooth" : "auto" });
       const p = PILLS[k];
-      if (CAN && animate && p && (p.left !== left || p.w !== w))
-        ind.animate([{ transform: `translateX(${p.left - left}px)`, width: p.w + "px" }, { transform: "none", width: w + "px" }], { duration: 480, easing: EASE.out });
-      PILLS[k] = { left, w };
+      if (CAN && animate && p && (p.left !== left || p.top !== top || p.w !== w || p.h !== h))
+        ind.animate([{ transform: `translate(${p.left - left}px, ${p.top - top}px)`, width: p.w + "px", height: p.h + "px" }, { transform: "none", width: w + "px", height: h + "px" }], { duration: 480, easing: EASE.out });
+      PILLS[k] = { left, top, w, h };
     });
   }
 

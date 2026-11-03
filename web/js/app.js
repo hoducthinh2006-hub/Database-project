@@ -370,8 +370,10 @@
       return d.length ? [{ ic: "clock", t: `${d.length} khóa học đang ở trạng thái nháp — chờ admin duyệt để công khai`, a: "Xem", at: `data-nav-go="manage:courses"` }] : [];
     }
     if (u.role === "admin") {
-      const n = (ADMIN.overview || {}).soKhoaChoDuyet;
-      return n ? [{ ic: "clock", t: `${n} khóa học đang chờ duyệt (nháp)`, a: "Duyệt", at: `data-nav-go="admin:courses"` }] : [];
+      const ov = ADMIN.overview || {}, items = [];
+      if (ov.soKhoaChoDuyet) items.push({ ic: "clock", t: `${ov.soKhoaChoDuyet} khóa học đang chờ duyệt (nháp)`, a: "Duyệt", at: `data-nav-go="admin:courses"` });
+      if (ov.soThanhToanChoDuyet) items.push({ ic: "card", t: `${ov.soThanhToanChoDuyet} giao dịch đang chờ duyệt`, a: "Xác nhận", at: `data-nav-go="admin:payments"` });
+      return items;
     }
     return [];
   }
@@ -592,8 +594,8 @@
     if (view === "quiz") initQuiz(quizData);
     if (view === "manage") {
       nav.mtab = tab || nav.mtab || "overview";
-      if (!TEACH.overview) { try { TEACH.overview = await API.teacherOverview(); } catch (e) { toast(e.message); } }
-      if (nav.mtab === "reviews" && !TEACH.reviews) { try { TEACH.reviews = await API.teacherReviews(); } catch (e) {} }
+      try { TEACH.overview = await API.teacherOverview(); } catch (e) { toast(e.message); }
+      if (nav.mtab === "reviews") { try { TEACH.reviews = await API.teacherReviews(); } catch (e) {} }
     }
     if (view === "admin") {
       nav.atab = tab || nav.atab || "overview";
@@ -1069,18 +1071,18 @@
     return ((STU.overview || {}).courses || []).filter((c) => c.TTDangKy !== "da_huy" && !seen.has(c.MaKH) && seen.add(c.MaKH));
   }
   async function loadBoard() {
-    if (STU.boardMode === "global") { const k = STU.gCrit + "|" + STU.gSpan; if (!STU.global[k]) STU.global[k] = await API.studentGlobalBoard(STU.gCrit, STU.gSpan); return; }
+    if (STU.boardMode === "global") { const k = STU.gCrit + "|" + STU.gSpan; STU.global[k] = await API.studentGlobalBoard(STU.gCrit, STU.gSpan); return; }
     const cs = boardCourses();
     if (!cs.length) return;
     if (!cs.find((c) => c.MaKH === STU.boardCourse)) STU.boardCourse = (cs.find((c) => c.DiemTB != null) || cs[0]).MaKH; // ưu tiên khóa đã có điểm để bảng không trống
-    if (!STU.board[STU.boardCourse]) STU.board[STU.boardCourse] = await API.studentBoard(STU.boardCourse);
+    STU.board[STU.boardCourse] = await API.studentBoard(STU.boardCourse);
   }
   async function loadLearnTab(tab) {
     if (!STU.overview) STU.overview = await API.studentOverview();
     if (tab === "board") await loadBoard();
-    if (tab === "results" && !STU.results) STU.results = await API.studentResults();
-    if (tab === "history" && !STU.history) STU.history = await API.studentHistory();
-    if (tab === "pay" && !STU.payments) STU.payments = await API.studentPayments();
+    if (tab === "results") STU.results = await API.studentResults();
+    if (tab === "history") STU.history = await API.studentHistory();
+    if (tab === "pay") STU.payments = await API.studentPayments();
   }
 
   function learnHero(ov) {
@@ -1892,28 +1894,27 @@
   };
   const REPORT_BY_ID = Object.fromEntries(REPORTS.map((r) => [r.id, r]));
   async function loadAdminTab(tab) {
-    if (!ADMIN.overview) ADMIN.overview = await API.adminOverview();
-    if (tab === "teachers" && !ADMIN.teachers) ADMIN.teachers = await API.adminTeachers();
-    if (tab === "students" && !ADMIN.students) ADMIN.students = await API.adminStudents();
-    if (tab === "courses" && !ADMIN.courses) ADMIN.courses = await API.adminCourses();
-    if (tab === "lessons" && !ADMIN.lessons) ADMIN.lessons = await API.adminLessons();
-    if (tab === "enrollments" && !ADMIN.enrollments) ADMIN.enrollments = await API.adminEnrollments();
-    if (tab === "quizzes" && !ADMIN.quizzes) ADMIN.quizzes = await API.adminQuizzes();
-    if (tab === "results" && !ADMIN.results) ADMIN.results = await API.adminResults();
-    if (tab === "payments" && !ADMIN.payments) ADMIN.payments = await API.adminPayments();
-    if (tab === "certificates" && !ADMIN.certificates) ADMIN.certificates = await API.adminCertificates();
-    if (tab === "reviews" && !ADMIN.reviews) ADMIN.reviews = await API.adminReviews();
+    // luôn tải lại khi vào/chuyển tab — không cache vĩnh viễn, tránh hiện số liệu cũ trong khi CSDL thật đã đổi
+    ADMIN.overview = await API.adminOverview();
+    if (tab === "teachers") ADMIN.teachers = await API.adminTeachers();
+    if (tab === "students") ADMIN.students = await API.adminStudents();
+    if (tab === "courses") ADMIN.courses = await API.adminCourses();
+    if (tab === "lessons") ADMIN.lessons = await API.adminLessons();
+    if (tab === "enrollments") ADMIN.enrollments = await API.adminEnrollments();
+    if (tab === "quizzes") ADMIN.quizzes = await API.adminQuizzes();
+    if (tab === "results") ADMIN.results = await API.adminResults();
+    if (tab === "payments") ADMIN.payments = await API.adminPayments();
+    if (tab === "certificates") ADMIN.certificates = await API.adminCertificates();
+    if (tab === "reviews") ADMIN.reviews = await API.adminReviews();
     if (REPORT_BY_ID[tab]) {
       if (!ADMIN.reportState) ADMIN.reportState = {};
       if (!ADMIN.reportState[tab]) {
         const r = REPORT_BY_ID[tab];
         ADMIN.reportState[tab] = { params: Object.fromEntries(r.params.map((p) => [p[0], p[3]])), rows: null, loading: false, error: null };
       }
-      const st = ADMIN.reportState[tab];
-      if (st.rows === null && !st.loading) {
-        try { st.rows = await API.report(tab, st.params); }
-        catch (e) { st.error = e.message; }
-      }
+      const st = ADMIN.reportState[tab]; // giữ nguyên params (khoảng ngày) người dùng đã chỉnh, chỉ tải lại rows
+      try { st.rows = await API.report(tab, st.params); st.error = null; }
+      catch (e) { st.error = e.message; }
     }
   }
   const ADMIN_SECTIONS = [

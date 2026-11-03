@@ -82,18 +82,39 @@ router.get('/diem-tb-hocvien', (req, res) => {
 // ───────────────────────── 🟩 LỘC — bài học / kiểm tra / tiến độ ─────────────────────────
 
 // 6 ⭐ Thống kê số lượt đã hoàn thành / đang học / chưa hoàn thành theo khóa, trong khoảng thời gian
+// Đúng y câu truy vấn số 5 trong sql/04_queries.sql (nhóm theo tiến độ/điểm/lịch sử học tập thực tế,
+// KHÔNG chỉ dựa cột TTDangKy — vì cột đó có thể chưa đồng bộ kịp với tiến độ/điểm mới nhất)
 router.get('/thong-ke-tiendo', (req, res) => {
   const tuNgay = day(req.query.tuNgay, '2026-08-01'), denNgay = day(req.query.denNgay, '2026-09-30');
   run(res, `
+    WITH TrangThai AS (
+       SELECT dk.MaDK, dk.MaKH,
+              CASE
+                WHEN dk.TTDangKy = 'da_huy' OR dk.NgayHuy IS NOT NULL
+                     THEN 'DaHuy'
+                WHEN COALESCE(td.TienDoPhanTram, 0) = 100
+                     AND dt.DiemTrungBinh >= 7 THEN 'HoanThanh'
+                WHEN EXISTS (SELECT 1 FROM LICH_SU_HOC_TAP ls
+                             WHERE ls.MaDK = dk.MaDK)
+                  OR EXISTS (SELECT 1 FROM KET_QUA kq
+                             WHERE kq.MaDK = dk.MaDK) THEN 'DangHoc'
+                ELSE 'ChuaHoanThanh'
+              END AS Nhom
+       FROM DANG_KY dk
+       LEFT JOIN V_TIEN_DO td ON td.MaDK = dk.MaDK
+       LEFT JOIN V_DIEM_TB dt ON dt.MaDK = dk.MaDK
+       WHERE dk.NgayDangKy >= ?
+         AND dk.NgayDangKy < ?
+    )
     SELECT kh.MaKH, kh.TenKH,
-           SUM(CASE WHEN dk.TTDangKy = 'hoan_thanh' THEN 1 ELSE 0 END) AS DaHoanThanh,
-           SUM(CASE WHEN dk.TTDangKy = 'dang_hoc'   THEN 1 ELSE 0 END) AS DangHoc,
-           SUM(CASE WHEN dk.TTDangKy NOT IN ('hoan_thanh','dang_hoc','da_huy') THEN 1 ELSE 0 END) AS ChuaHoanThanh,
-           SUM(CASE WHEN dk.TTDangKy = 'da_huy' THEN 1 ELSE 0 END) AS DaHuy
-    FROM   KHOA_HOC kh
-    JOIN   DANG_KY dk ON dk.MaKH = kh.MaKH
-    WHERE  dk.NgayDangKy BETWEEN ? AND ?
-    GROUP BY kh.MaKH, kh.TenKH`, [tuNgay, denNgay]);
+          SUM(t.Nhom = 'HoanThanh') AS DaHoanThanh,
+          SUM(t.Nhom = 'DangHoc') AS DangHoc,
+          SUM(t.Nhom = 'ChuaHoanThanh') AS ChuaHoanThanh,
+          SUM(t.Nhom = 'DaHuy') AS DaHuy
+    FROM TrangThai t
+    JOIN KHOA_HOC kh ON kh.MaKH = t.MaKH
+    GROUP BY kh.MaKH, kh.TenKH
+    ORDER BY kh.MaKH`, [tuNgay, denNgay]);
 });
 
 // 7. Bài học kèm tên khóa học + tên giảng viên phụ trách
