@@ -85,4 +85,13 @@ function questions(arr) {
   });
 }
 
-module.exports = { text, paragraph, email, int, oneOf, date, phone, youtube, code, questions, YT_RE };
+// Thời hạn truy cập khóa học, tính theo ngày: chỉ nhận 90/180/365 (≈ 3/6/12 tháng) hoặc rỗng = vĩnh viễn
+const DURATIONS = [90, 180, 365];
+function duration(v) {
+  if (v === undefined || v === null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  if (!DURATIONS.includes(n)) throw bad('Thời hạn truy cập không hợp lệ');
+  return n;
+}
+
+module.exports = { text, paragraph, email, int, oneOf, date, phone, youtube, code, questions, duration, YT_RE };

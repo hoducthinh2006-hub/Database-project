@@ -157,11 +157,14 @@
   const ENROLL_LABEL = { cho_xac_nhan: "Chờ xác nhận", da_xac_nhan: "Đã xác nhận", dang_hoc: "Đang học", hoan_thanh: "Hoàn thành", da_huy: "Đã huỷ" };
   function enrollStatusBadge(s) { const cls = s === "hoan_thanh" ? "ok" : s === "da_huy" ? "no" : "muted"; return `<span class="pill ${cls}">${esc(ENROLL_LABEL[s] || s)}</span>`; }
   // bảng tự sinh cột từ key của dòng đầu tiên — dùng cho kết quả 15 truy vấn báo cáo (mỗi câu trả về cột khác nhau)
+  // MySQL trả DECIMAL dạng chuỗi ("1200000.00", "10.000000", "8.333333"): bỏ số 0 thừa, tối đa 2 chữ số thập phân
+  const cleanNum = (x) => { const n = Number(x); return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : String(x); };
+  const cellText = (v) => (typeof v === "string" || typeof v === "number") && /^-?\d+\.\d+$/.test(String(v)) ? cleanNum(v) : v;
   function autoTable(rows) {
     if (!rows || !rows.length) return `<div class="empty-state sm"><p class="muted">Không có dữ liệu phù hợp với tham số đã chọn.</p></div>`;
     const cols = Object.keys(rows[0]);
     return `<div class="tbl-wrap"><table class="data-table"><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>
-      ${rows.map((r) => `<tr>${cols.map((c) => `<td>${r[c] == null ? "—" : esc(r[c])}</td>`).join("")}</tr>`).join("")}
+      ${rows.map((r) => `<tr>${cols.map((c) => `<td>${r[c] == null ? "—" : esc(cellText(r[c]))}</td>`).join("")}</tr>`).join("")}
     </tbody></table></div>`;
   }
 
@@ -281,13 +284,13 @@
         + honor;
     }
     if (role === "admin") {
-      const ov = ADMIN.overview || {}, cnt = { teachers: ov.SoGiangVien, students: ov.SoHocVien, courses: ov.SoKhoaHoc };
+      const ov = ADMIN.overview || {}, cnt = { teachers: ov.SoGiangVien, students: ov.SoHocVien, courses: ov.SoKhoaHoc, reports: REPORTS.length };
       return honor + ADMIN_SECTIONS.map((g, gi) => {
-        const collapsible = gi >= 4;                                   // 3 nhóm báo cáo: gập cho gọn, tự mở khi đang xem
+        const collapsible = false;                                     // báo cáo gom về 1 mục "Báo cáo" nên không cần gập nhóm
         const act = v === "admin" && g.items.some((it) => it[0] === nav.atab);
         const open = !collapsible || act || GROUP_OPEN.has(gi);
         const head = collapsible ? `<button class="sb-ghead" data-grp="${gi}">${esc(g.group)}${ico("chev-d")}</button>` : `<div class="sb-sec" style="padding-top:12px">${esc(g.group)}</div>`;
-        return `<div class="sb-group${open ? " open" : ""}">${head}<div class="sb-gbody">${g.items.map(([id, ic, l]) => sbItem("a-" + id, ic, l, v === "admin" && nav.atab === id, () => go("admin", null, id), cnt[id])).join("")}</div></div>`;
+        return `<div class="sb-group${open ? " open" : ""}">${head}<div class="sb-gbody">${g.items.map(([id, ic, l]) => sbItem("a-" + id, ic, l, v === "admin" && (nav.atab === id || (id === "reports" && !!REPORT_BY_ID[nav.atab])), () => go("admin", null, id), cnt[id])).join("")}</div></div>`;
       }).join("");
     }
     return home + explore(v === "detail" || (v === "catalog" && catState.sort !== "rating"))
@@ -462,9 +465,12 @@
     setTimeout(() => { if ($("#ovl") === o) { root.innerHTML = ""; document.body.style.overflow = ""; galaxyHold(false); } }, 190);
   }
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
-  function openConfirm(title, msg, onYes) {
+  function openConfirm(title, msg, onYes, opts) {
+    const o = opts || {};
+    const label = o.yesLabel || "Xóa";
+    const cls = o.yesClass || "btn-danger";
     openModal(`<div class="modal-card sm"><h2 class="modal-title">${title}</h2><p class="muted" style="margin-bottom:20px">${msg}</p>
-      <div class="form-actions"><button class="btn btn-ghost" data-close>Hủy</button><button class="btn btn-danger" id="confirmYes">Xóa</button></div></div>`);
+      <div class="form-actions"><button class="btn btn-ghost" data-close>Hủy</button><button class="btn ${cls}" id="confirmYes">${esc(label)}</button></div></div>`);
     $$("[data-close]").forEach((b) => b.onclick = closeModal);
     $("#confirmYes").onclick = onYes;
   }
@@ -961,11 +967,13 @@
     const M = {
       khach: ["Đăng nhập để xem bài giảng", "Tạo tài khoản học viên miễn phí, rồi đăng ký khóa học để bắt đầu.",
         `<button class="btn btn-accent" data-auth="signin">Đăng nhập</button><button class="btn btn-ghost" data-auth="signup">Tạo tài khoản</button>`],
-      chua_dang_ky: ["Đăng ký khóa học để xem bài giảng", free ? "Khóa học miễn phí — đăng ký là học được ngay." : `Học phí ${vnd(c.HocPhi)} · truy cập trọn đời.`,
+      chua_dang_ky: ["Đăng ký khóa học để xem bài giảng", free ? "Khóa học miễn phí — đăng ký là học được ngay." : `Học phí ${vnd(c.HocPhi)} · ${c.ThoiHanTruyCap ? `truy cập ${Math.round(c.ThoiHanTruyCap / 30)} tháng` : "truy cập trọn đời"}.`,
         `<button class="btn btn-accent" data-enroll>Đăng ký học ${ico("arrow-r")}</button>`],
       chua_thanh_toan: ["Thanh toán để mở khóa bài giảng", `Bạn đã đăng ký — thanh toán ${vnd(c.HocPhi)} để xem video và làm bài kiểm tra.`,
         `<button class="btn btn-accent" data-pay-detail="${esc(q.maDK)}">Thanh toán ngay ${ico("arrow-r")}</button>`],
       cho_duyet: ["Đang chờ admin xác nhận thanh toán", "Bạn đã gửi yêu cầu — nội dung sẽ mở ngay khi admin duyệt.", ""],
+      het_han: ["Khóa học đã hết hạn truy cập", `Thời hạn truy cập (${c.ThoiHanTruyCap ? Math.round(c.ThoiHanTruyCap / 30) + " tháng" : ""}) đã kết thúc — đăng ký lại và thanh toán ${vnd(c.HocPhi)} để tiếp tục học.`,
+        `<button class="btn btn-accent" data-retake>Đăng ký lại ${ico("arrow-r")}</button>`],
       khong_phai_hoc_vien: ["Video dành cho học viên đã đăng ký", "Tài khoản này chỉ xem được nội dung khóa học do chính mình phụ trách.", ""],
     }[q.lyDo] || ["Bài giảng đang được khóa", "", ""];
     return `<div class="video-lock" style="background:${th.grad}"><div class="vl-card"><span class="vl-ic">${ico("lock")}</span><b>${M[0]}</b><p>${M[1]}</p><div class="vl-act">${M[2]}</div></div></div>`;
@@ -1229,13 +1237,14 @@
   function courseCard(c) {
     const th = themeOf(c), pct = Math.round(c.TienDoPhanTram), cancelled = c.TTDangKy === "da_huy", done = c.TTDangKy === "hoan_thanh";
     const unpaid = !c.DaThanhToan && Number(c.HocPhi) > 0 && !cancelled;
+    const hetHan = !!c.HetHan && !cancelled;
     return `
     <div class="lc-card ${cancelled ? "is-cancel" : ""}">
       <div class="lc-thumb" style="background:${th.grad}">${th.glyph}</div>
       <div class="lc-mid">
-        <div class="lc-tags">${learnStatusPill(c)}${c.LanDangKy > 1 ? `<span class="pill apr">Lần học thứ ${c.LanDangKy}</span>` : ""}${c.MaCC ? `<span class="pill gold">🏅 Có chứng chỉ</span>` : ""}${unpaid ? `<span class="pill no">Chưa thanh toán</span>` : ""}</div>
+        <div class="lc-tags">${learnStatusPill(c)}${c.LanDangKy > 1 ? `<span class="pill apr">Lần học thứ ${c.LanDangKy}</span>` : ""}${c.MaCC ? `<span class="pill gold">🏅 Có chứng chỉ</span>` : ""}${hetHan ? `<span class="pill no">⏰ Đã hết hạn</span>` : unpaid ? `<span class="pill no">Chưa thanh toán</span>` : ""}</div>
         <h3>${esc(c.TenKH)}</h3>
-        <div class="gv">👤 ${esc(c.TenGV)} · ${esc(c.LinhVuc || "")} · Đăng ký ${esc(String(c.NgayDangKy).slice(0, 10))}</div>
+        <div class="gv">👤 ${esc(c.TenGV)} · ${esc(c.LinhVuc || "")} · Đăng ký ${esc(String(c.NgayDangKy).slice(0, 10))}${cancelled ? "" : esc(hanDungText(c))}</div>
         <div class="prog-line"><div class="bar ${done ? "gold" : ""}"><i style="width:${pct}%"></i></div><span class="pc">${pct}%</span></div>
         <div class="lc-chips">
           <span>📖 ${c.SoBaiHoanThanh}/${c.TongSoBai} bài</span>
@@ -1247,6 +1256,7 @@
       </div>
       <div class="lc-right">
         ${cancelled ? `<button class="btn btn-ghost btn-sm" data-open="${c.MaKH}">Xem khóa học</button>`
+          : hetHan ? `<button class="btn btn-accent btn-sm" data-open="${c.MaKH}">Đăng ký lại →</button>`
           : `<button class="btn btn-accent btn-sm" data-resume="${c.MaKH}:${c.BaiTiepTheo ? c.BaiTiepTheo.MaBH : ""}">${done ? "Ôn tập" : c.SoBaiHoanThanh ? "Học tiếp" : "Bắt đầu"} →</button>`}
         ${unpaid ? `<button class="btn btn-ghost btn-sm" data-pay="${c.MaDK}">💳 Thanh toán</button>` : ""}
         ${!cancelled ? `<button class="btn btn-ghost btn-sm" data-review="${c.MaDK}">${c.DiemDanhGia != null ? "✏️ Sửa đánh giá" : "⭐ Đánh giá"}</button>` : ""}
@@ -1555,6 +1565,11 @@
   }
 
   /* --- trang chi tiết khóa: tiến độ + đánh dấu đã học --- */
+  function hanDungText(en) {
+    if (!en.NgayHetHan) return "";
+    const left = Math.ceil((new Date(en.NgayHetHan + "T00:00:00") - new Date(new Date().toDateString())) / 86400000);
+    return left >= 0 ? ` · Hạn dùng: còn ${left} ngày` : ` · Hạn dùng: đã hết hạn ${Math.abs(left)} ngày trước`;
+  }
   function courseProgressPanel(lessons, doneSet, en) {
     const total = lessons.length, n = lessons.filter((l) => doneSet.has(l.MaBH)).length, pct = total ? Math.round((n / total) * 100) : 0;
     const done = en.TTDangKy === "hoan_thanh";
@@ -1562,10 +1577,32 @@
       <div class="pp-main">
         <div class="pp-top"><b>Tiến độ của bạn</b>${learnStatusPill({ TTDangKy: en.TTDangKy })}</div>
         <div class="prog-line"><div class="bar ${done ? "gold" : ""}"><i style="width:${pct}%"></i></div><span class="pc">${pct}%</span></div>
-        <span class="muted pp-sub">${n}/${total} bài đã học${done ? " · Bạn đã hoàn thành khóa học 🎉" : ""}</span>
+        <span class="muted pp-sub">${n}/${total} bài đã học${done ? " · Bạn đã hoàn thành khóa học 🎉" : ""}${esc(hanDungText(en))}</span>
       </div>
-      <button class="btn btn-ghost btn-sm" data-go="learn">📚 Học tập của tôi</button>
+      <div class="row-acts">
+        <button class="btn btn-ghost btn-sm" data-go="learn">📚 Học tập của tôi</button>
+      </div>
     </div>`;
+  }
+  // Chỉ gọi khi khóa ĐÃ hết hạn (nút nằm trong khung video bị khóa) — luôn phải thanh toán lại.
+  // Còn hạn thì không cần nút này: học viên cứ vào xem/ôn tập lại nội dung bình thường.
+  async function doRetake() {
+    if (!detailCache) return;
+    openConfirm("Đăng ký lại khóa học?", "Khóa học đã hết hạn truy cập — cần thanh toán lại để học tiếp. Chứng chỉ và lịch sử học tập cũ vẫn được giữ nguyên.",
+      async () => {
+        const btn = $("#confirmYes"); if (btn) btn.disabled = true; // chống bấm đúp
+        try {
+          const r = await API.retake(detailCache.MaKH);
+          closeModal();
+          // nạp lại trạng thái: lượt cũ đã chuyển "đã hủy", lượt mới đang chờ thanh toán — không nạp lại thì giao diện vẫn hiện "hết hạn" cũ
+          detailCache = await loadDetail(detailCache.MaKH);
+          stuReset();
+          try { STU.overview = await API.studentOverview(); } catch (e) {}
+          render();
+          toast("Vui lòng thanh toán để mở lại khóa học 💳");
+          openPayModal(r.MaDK);
+        } catch (e) { closeModal(); toast(e.message); }
+      }, { yesLabel: "Đăng ký lại", yesClass: "btn-accent" });
   }
   // Máy chủ chỉ cho đánh dấu xong sau khi đã học tối thiểu vài chục giây kể từ lúc mở bài → nút đếm ngược cho người học thấy rõ
   let LTIMER = null; // { maBH, conLai (giây; null = đang hỏi máy chủ), iv }
@@ -1887,12 +1924,15 @@
     { id: "hocvien-chua-thanhtoan", nguoi: "Thịnh", doiTuong: "admin", sao: false, ten: "Học viên chưa từng thanh toán", mo: "Học viên chưa có giao dịch thanh toán thành công nào — nhắc nợ/chăm sóc khách hàng.", params: [] },
     { id: "email-gop", nguoi: "Thịnh", doiTuong: "admin", sao: false, ten: "Gộp email giảng viên + học viên", mo: "Danh sách email gộp từ 2 bảng bằng UNION — xuất danh bạ liên hệ hàng loạt.", params: [] },
   ];
-  const REPORT_AUDIENCE = {
-    admin: ["🛡️", "Quản trị & vận hành"],
-    giangvien: ["🧑‍🏫", "Giảng dạy & lớp học"],
-    hocvien: ["🎓", "Học viên & thành tích"],
-  };
+  // 4 nhóm theo NỘI DUNG báo cáo hỏi về (không theo người dùng); trong mỗi nhóm, báo cáo chính (⭐) đứng trước
+  const REPORT_TOPICS = [
+    { ten: "Khóa học & đăng ký", ic: "book", ids: ["khoahoc-theo-thang", "ty-le-hoan-thanh", "thong-ke-tiendo", "hocphi-tren-tb", "khoahoc-chua-dangky", "baihoc-chi-tiet"] },
+    { ten: "Doanh thu & thanh toán", ic: "card", ids: ["doanhthu-theo-thang", "top-doanhthu", "hocvien-chua-thanhtoan"] },
+    { ten: "Kết quả & thành tích", ic: "award", ids: ["danhgia-theo-khoang", "diem-tb-hocvien", "xephang-hocvien", "ty-le-chungchi"] },
+    { ten: "Người dùng", ic: "board", ids: ["giangvien-da-khoa", "email-gop"] },
+  ];
   const REPORT_BY_ID = Object.fromEntries(REPORTS.map((r) => [r.id, r]));
+  const foldText = (s) => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").toLowerCase(); // tìm không phân biệt dấu
   async function loadAdminTab(tab) {
     // luôn tải lại khi vào/chuyển tab — không cache vĩnh viễn, tránh hiện số liệu cũ trong khi CSDL thật đã đổi
     ADMIN.overview = await API.adminOverview();
@@ -1922,9 +1962,7 @@
     { group: "Người dùng", items: [["teachers", "board", "Giảng viên"], ["students", "cap", "Học viên"]] },
     { group: "Học tập", items: [["courses", "book", "Khóa học"], ["lessons", "file", "Bài học"], ["enrollments", "list", "Đăng ký"], ["quizzes", "flask", "Bài kiểm tra"], ["results", "check-circle", "Kết quả"]] },
     { group: "Tài chính & phản hồi", items: [["payments", "card", "Thanh toán"], ["certificates", "award", "Chứng chỉ"], ["reviews", "star", "Đánh giá"]] },
-    { group: REPORT_AUDIENCE.admin[1], items: REPORTS.filter((r) => r.doiTuong === "admin").map((r) => [r.id, "chart", r.ten]) },
-    { group: REPORT_AUDIENCE.giangvien[1], items: REPORTS.filter((r) => r.doiTuong === "giangvien").map((r) => [r.id, "chart", r.ten]) },
-    { group: REPORT_AUDIENCE.hocvien[1], items: REPORTS.filter((r) => r.doiTuong === "hocvien").map((r) => [r.id, "chart", r.ten]) },
+    { group: "Phân tích", items: [["reports", "chart", "Báo cáo"]] },
   ];
   function viewAdmin() {
     const ov = ADMIN.overview || {};
@@ -1932,6 +1970,7 @@
       teachers: adminTeachersTab, students: adminStudentsTab, courses: adminCoursesTab,
       lessons: adminLessonsTab, enrollments: adminEnrollmentsTab, quizzes: adminQuizzesTab, results: adminResultsTab,
       payments: adminPaymentsTab, certificates: adminCertificatesTab, reviews: adminReviewsTab,
+      reports: reportsListTab,
     };
     REPORTS.forEach((r) => { panels[r.id] = () => reportDetailTab(r.id); });
     return `
@@ -2058,7 +2097,7 @@
         <td class="muted">${esc(q.TenBH)}</td>
         <td class="muted">${esc(q.TenKH)}</td>
         <td class="tnum">${q.ThoiGian} phút</td>
-        <td class="tnum">${q.DiemToiDa}</td>
+        <td class="tnum">${cleanNum(q.DiemToiDa)}</td>
         <td class="tnum">${q.SoLanLamToiDa ?? "∞"}</td>
         <td>${statusBadge(q.TrangThai)}</td>
       </tr>`).join("")}
@@ -2074,7 +2113,7 @@
         <td class="muted">${esc(r.TenKH)}</td>
         <td class="muted">${esc(r.TenBKT)}</td>
         <td class="tnum">${r.LanLam}</td>
-        <td class="tnum">${r.DiemSo}/${r.DiemToiDa}</td>
+        <td class="tnum">${cleanNum(r.DiemSo)}/${cleanNum(r.DiemToiDa)}</td>
         <td class="muted">${esc(String(r.ThoiGianLam).slice(0, 16).replace("T", " "))}</td>
       </tr>`).join("")}
     </tbody></table>`;
@@ -2124,11 +2163,47 @@
     </tbody></table>`;
   }
   // mỗi truy vấn là 1 mục sidebar riêng — vào là tự tải, đổi khoảng thời gian là tự tải lại (không có nút "Chạy")
+  // Trang "Báo cáo": thẻ chia theo 4 nhóm nội dung, có ô tìm kiếm và lọc "báo cáo chính" (lọc trên DOM, không gọi lại máy chủ)
+  function reportsListTab() {
+    const ui = ADMIN.reportsUi = ADMIN.reportsUi || { q: "", star: false };
+    const nStar = REPORTS.filter((r) => r.sao).length;
+    const chip = (v, l, n) => `<button class="chip ${ui.star === v ? "active" : ""}" data-rp-star="${v ? 1 : 0}">${l} <span class="chip-n">${n}</span></button>`;
+    return `
+    <div class="sec-head"><div><h2 style="font-size:1.2rem">Báo cáo</h2><p class="muted">Chọn một báo cáo để xem số liệu trực tiếp từ cơ sở dữ liệu.</p></div></div>
+    <div class="rp-toolbar">
+      <div class="rc-field rp-search"><input id="rpSearch" type="search" placeholder="Tìm báo cáo..." value="${esc(ui.q)}" autocomplete="off"></div>
+      <div class="chips">${chip(false, "Tất cả", REPORTS.length)}${chip(true, "Báo cáo chính", nStar)}</div>
+    </div>
+    ${REPORT_TOPICS.map((t) => `
+      <section class="rp-topic" data-rp-topic>
+        <h3 class="rp-topic-h">${ico(t.ic)} ${esc(t.ten)} <span class="muted">· ${t.ids.length}</span></h3>
+        <div class="rp-grid">${t.ids.map((id) => {
+          const r = REPORT_BY_ID[id];
+          return `<button class="rp-card" data-atab="${r.id}" data-rp-card data-star="${r.sao ? 1 : 0}" data-text="${esc(foldText(r.ten + " " + r.mo))}">
+            <b>${esc(r.ten)}</b><span>${esc(r.mo)}</span></button>`;
+        }).join("")}</div>
+      </section>`).join("")}
+    <p class="muted" id="rpEmpty" hidden>Không có báo cáo nào khớp với tìm kiếm.</p>`;
+  }
+  function filterReportCards() {
+    const ui = ADMIN.reportsUi || { q: "", star: false }, q = foldText(ui.q.trim());
+    let shown = 0;
+    $$("[data-rp-topic]").forEach((sec) => {
+      let n = 0;
+      $$("[data-rp-card]", sec).forEach((c) => {
+        const ok = (!ui.star || c.dataset.star === "1") && (!q || c.dataset.text.includes(q));
+        c.hidden = !ok; if (ok) n++;
+      });
+      sec.hidden = n === 0; shown += n;
+    });
+    const em = $("#rpEmpty"); if (em) em.hidden = shown > 0;
+  }
   function reportDetailTab(id) {
     const r = REPORT_BY_ID[id];
     const st = ADMIN.reportState[id];
     return `
-    <div class="sec-head"><div><h2 style="font-size:1.2rem">${esc(r.ten)}${r.sao ? ` <span class="rc-star">⭐</span>` : ""}</h2><p class="muted">${esc(r.mo)}</p></div></div>
+    <button class="back-btn" data-atab="reports">${ico("arrow-r")} Quay lại danh sách báo cáo</button>
+    <div class="sec-head"><div><h2 style="font-size:1.2rem">${esc(r.ten)}</h2><p class="muted">${esc(r.mo)}</p></div></div>
     ${r.params.length ? `<div class="rc-params" style="margin:4px 0 18px">
       ${r.params.map(([key, label, type]) => `<div class="rc-field"><label>${label}</label><input type="${type}" data-report-param="${id}:${key}" value="${esc(st.params[key])}"></div>`).join("")}
     </div>` : ""}
@@ -2266,6 +2341,7 @@
             <div class="field"><label>Trình độ</label><select id="cfLvl">${lvlOpts}</select></div></div>
           <div class="field-row"><div class="field"><label>Học phí (₫) *</label><input id="cfPhi" type="number" min="0" value="${c ? Number(c.HocPhi) : ""}" placeholder="590000"></div>
             <div class="field"><label>Thời lượng (giờ)</label><input id="cfTL" type="number" min="1" value="${c ? c.ThoiLuong : ""}" placeholder="40"></div></div>
+          <div class="field"><label>Thời hạn truy cập sau khi đăng ký</label><select id="cfHan">${[["", "Vĩnh viễn"], ["90", "3 tháng"], ["180", "6 tháng"], ["365", "12 tháng"]].map(([v, l]) => `<option value="${v}" ${c && String(c.ThoiHanTruyCap || "") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
           ${!c ? `<div class="auth-note">📋 Khóa học mới sẽ ở trạng thái <b>Nháp</b> — admin kiểm tra nội dung rồi mới công khai.</div>` : ""}
           <div class="form-actions"><button type="button" class="btn btn-ghost" data-close>Hủy</button><button type="submit" class="btn btn-primary" id="cfSubmit">${c ? "Lưu thay đổi" : "Tạo khóa học"}</button></div>
         </form></div>`);
@@ -2274,7 +2350,7 @@
   }
   async function saveCourse(maKH) {
     const err = $("#cfErr"), fail = (m) => { err.textContent = m; err.hidden = false; };
-    const body = { TenKH: $("#cfTen").value.trim(), MoTa: $("#cfMota").value.trim(), LinhVuc: $("#cfCat").value, TrinhDo: $("#cfLvl").value, HocPhi: parseInt($("#cfPhi").value, 10), ThoiLuong: parseInt($("#cfTL").value, 10) || 1 };
+    const body = { TenKH: $("#cfTen").value.trim(), MoTa: $("#cfMota").value.trim(), LinhVuc: $("#cfCat").value, TrinhDo: $("#cfLvl").value, HocPhi: parseInt($("#cfPhi").value, 10), ThoiLuong: parseInt($("#cfTL").value, 10) || 1, ThoiHanTruyCap: $("#cfHan").value || null };
     if (!body.TenKH) return fail("Vui lòng nhập tên khóa học.");
     if (isNaN(body.HocPhi) || body.HocPhi < 0) return fail("Học phí không hợp lệ.");
     const btn = $("#cfSubmit"); btn.disabled = true;
@@ -2333,10 +2409,12 @@
     if (AUTH.user.role === "student") {
       const e = c._enroll || {};
       if (!e.enrolled) return `<button class="btn btn-accent btn-block btn-lg" data-enroll>Đăng ký học ${ico("arrow-r")}</button>`;
+      // Hết hạn CHẶN TRƯỚC mọi thứ khác — kể cả đã từng trả tiền. Lượt cũ không dùng lại được, phải đăng ký lại.
+      if (e.hetHan) return `<div class="enrolled-badge pending"><span class="eb-ic">${ico("clock")}</span> Đã hết hạn truy cập${e.NgayHetHan ? ` · từ ${esc(String(e.NgayHetHan).slice(0, 10))}` : ""}</div><button class="btn btn-accent btn-block btn-lg" data-retake>Đăng ký lại ${vnd(c.HocPhi)} ${ico("arrow-r")}</button>`;
       // khóa có phí mà chưa thanh toán: giữ chỗ nhưng chưa mở nội dung
       if (e.dangCho) return `<div class="enrolled-badge pending"><span class="eb-ic">${ico("clock")}</span> Đã gửi yêu cầu thanh toán — chờ admin xác nhận</div>`;
       if (!e.entitled) return `<div class="enrolled-badge pending"><span class="eb-ic">${ico("clock")}</span> Đã đăng ký — chờ thanh toán</div><button class="btn btn-accent btn-block btn-lg" data-pay-detail="${esc(e.MaDK)}">Thanh toán ${vnd(c.HocPhi)} ${ico("arrow-r")}</button>`;
-      return `<div class="enrolled-badge"><span class="eb-ic">${ico("check")}</span> Bạn đã đăng ký khóa học này</div><button class="btn btn-accent btn-block btn-lg" id="startBtn">Vào học ${ico("arrow-r")}</button>`;
+      return `<div class="enrolled-badge"><span class="eb-ic">${ico("check")}</span> Bạn đã đăng ký khóa học này${esc(hanDungText(e))}</div><button class="btn btn-accent btn-block btn-lg" id="startBtn">Vào học ${ico("arrow-r")}</button>`;
     }
     return c.quyen && c.quyen.xem
       ? `<button class="btn btn-accent btn-block btn-lg" id="startBtn">Xem trước khóa học ${ico("arrow-r")}</button>`
@@ -2625,6 +2703,7 @@
 
     // đăng ký + bài kiểm tra
     $$("[data-enroll]").forEach((el) => el.onclick = () => doEnroll());
+    $$("[data-retake]").forEach((el) => el.onclick = () => doRetake());
     $$("[data-pay-detail]").forEach((el) => el.onclick = () => openPayModal(el.dataset.payDetail));
     $$("[data-do-quiz]").forEach((el) => el.onclick = () => go("quiz", el.dataset.doQuiz));
     $$("[data-ans]").forEach((el) => el.onclick = () => selectAnswer(el.dataset.ans, el));
@@ -2643,6 +2722,12 @@
 
     // bảng điều khiển quản trị
     $$("[data-atab]").forEach((el) => el.onclick = () => go("admin", null, el.dataset.atab));
+    const rpq = $("#rpSearch");
+    if (rpq) {
+      rpq.oninput = () => { ADMIN.reportsUi.q = rpq.value; filterReportCards(); };
+      $$("[data-rp-star]").forEach((el) => el.onclick = () => { ADMIN.reportsUi.star = el.dataset.rpStar === "1"; render(); });
+      filterReportCards();
+    }
     $$("[data-add-teacher]").forEach((el) => el.onclick = () => openCreateTeacherForm());
     $$("[data-teacher-status]").forEach((el) => el.onclick = () => toggleTeacherStatus(el.dataset.teacherStatus, el.dataset.cur));
     $$("[data-student-status]").forEach((el) => el.onclick = () => toggleStudentStatus(el.dataset.studentStatus, el.dataset.cur));

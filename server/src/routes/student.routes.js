@@ -19,7 +19,8 @@ router.get('/overview', async (req, res) => {
 
     const [courses] = await pool.query(`
       SELECT dk.MaDK, dk.MaKH, kh.TenKH, kh.LinhVuc, kh.TrinhDo, kh.ThoiLuong, gv.HoTen AS TenGV,
-             dk.HocPhi, dk.NgayDangKy, dk.TTDangKy,
+             dk.HocPhi, dk.NgayDangKy, dk.TTDangKy, dk.NgayHetHan,
+             (dk.NgayHetHan IS NOT NULL AND dk.NgayHetHan < CURRENT_DATE) AS HetHan,
              lan.LanDangKy,
              td.TongSoBai, td.SoBaiHoanThanh, COALESCE(td.TienDoPhanTram, 0) AS TienDoPhanTram,
              dtb.DiemTrungBinh AS DiemTB,
@@ -69,6 +70,7 @@ router.get('/overview', async (req, res) => {
         ...c,
         DaThanhToan: !!c.DaThanhToan,
         DangChoDuyet: !c.DaThanhToan && !!c.DangChoDuyet,
+        HetHan: !!c.HetHan,
         DiemTB: c.DiemTB != null ? Math.round(Number(c.DiemTB) * 100) / 100 : null,
         BaiTiepTheo: next ? { MaBH: next.MaBH, TenBH: next.TenBH, ThuTu: next.ThuTu } : null,
         Hang: rk ? Number(rk.XepHang) : null,
@@ -279,7 +281,9 @@ async function lessonContext(req) {
   if (!bh) throw notFound('Không tìm thấy bài học');
   const ent = await studentEntitlement(pool, req.user.ma, bh.MaKH);
   if (!ent.dk) throw forbidden('Bạn chưa đăng ký khóa học này', 'NOT_ENROLLED');
-  if (!ent.entitled) throw forbidden('Vui lòng thanh toán học phí để mở khóa bài học', 'UNPAID');
+  if (!ent.entitled) throw forbidden(
+    ent.reason === 'het_han' ? 'Khóa học đã hết hạn truy cập, vui lòng đăng ký lại' : 'Vui lòng thanh toán học phí để mở khóa bài học',
+    ent.reason === 'het_han' ? 'EXPIRED' : 'UNPAID');
   const need = cfg.lessonMinSeconds === 0 ? 0
     : Math.min(cfg.lessonMinSeconds, Math.max(3, Math.round((Number(bh.ThoiLuong) || 0) * 6)));
   return { bh, dk: ent.dk, need };

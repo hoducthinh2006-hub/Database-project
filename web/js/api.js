@@ -51,6 +51,7 @@ window.API = (function () {
     // đăng ký khóa học
     getEnrollment: (maKH) => req("GET", "/courses/" + maKH + "/enrollment"),
     enroll: (maKH) => req("POST", "/courses/" + maKH + "/enroll"),
+    retake: (maKH) => req("POST", "/courses/" + maKH + "/retake"),
     // bài kiểm tra (nộp bài phải kèm startToken nhận được khi mở bài)
     listQuizzes: (maKH) => req("GET", "/quizzes/course/" + maKH),
     getQuiz: (maBKT) => req("GET", "/quizzes/" + maBKT),

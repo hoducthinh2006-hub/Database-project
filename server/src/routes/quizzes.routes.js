@@ -79,7 +79,9 @@ router.get('/:maBKT', auth, async (req, res) => {
       if (bkt.TrangThai !== 'active') throw forbidden('Bài kiểm tra này đang tạm ngừng', 'QUIZ_INACTIVE');
       const ent = await studentEntitlement(pool, req.user.ma, bkt.MaKH);
       if (!ent.dk) throw forbidden('Bạn cần đăng ký khóa học này để làm bài kiểm tra', 'NOT_ENROLLED');
-      if (!ent.entitled) throw forbidden('Vui lòng thanh toán học phí để mở khóa bài kiểm tra', 'UNPAID');
+      if (!ent.entitled) throw forbidden(
+        ent.reason === 'het_han' ? 'Khóa học đã hết hạn truy cập, vui lòng đăng ký lại' : 'Vui lòng thanh toán học phí để mở khóa bài kiểm tra',
+        ent.reason === 'het_han' ? 'EXPIRED' : 'UNPAID');
       const [[s]] = await pool.query(
         `SELECT COUNT(*) AS n, MAX(DiemSo) AS hi, COALESCE(MAX(LanLam),0) AS maxLan, MAX(ThoiGianLam) AS cuoi,
                 TIMESTAMPDIFF(SECOND, MAX(ThoiGianLam), NOW()) AS truoc
@@ -110,7 +112,9 @@ router.post('/:maBKT/submit', auth, async (req, res) => {
     if (!bkt || bkt.TrangThai !== 'active' || bkt.TrangThaiKH !== 'published') throw notFound('Không tìm thấy bài kiểm tra');
     const ent = await studentEntitlement(pool, req.user.ma, bkt.MaKH);
     if (!ent.dk) throw forbidden('Bạn chưa đăng ký khóa học này', 'NOT_ENROLLED');
-    if (!ent.entitled) throw forbidden('Vui lòng thanh toán học phí để mở khóa bài kiểm tra', 'UNPAID');
+    if (!ent.entitled) throw forbidden(
+      ent.reason === 'het_han' ? 'Khóa học đã hết hạn truy cập, vui lòng đăng ký lại' : 'Vui lòng thanh toán học phí để mở khóa bài kiểm tra',
+      ent.reason === 'het_han' ? 'EXPIRED' : 'UNPAID');
 
     let tk;
     try { tk = jwt.verify(String(req.body.startToken || ''), cfg.jwtSecret, { algorithms: ['HS256'] }); }

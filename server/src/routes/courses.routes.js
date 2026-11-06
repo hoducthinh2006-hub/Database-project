@@ -17,6 +17,7 @@ function courseFields(b) {
     TrinhDo: b.TrinhDo === undefined || b.TrinhDo === '' ? 'co_ban' : v.oneOf(b.TrinhDo, LEVELS, 'Trình độ'),
     ThoiLuong: v.int(b.ThoiLuong === undefined || b.ThoiLuong === '' ? 1 : b.ThoiLuong, { name: 'Thời lượng', min: 1, max: 10000 }),
     HocPhi: v.int(b.HocPhi === undefined || b.HocPhi === '' ? 0 : b.HocPhi, { name: 'Học phí', min: 0, max: 100000000 }),
+    ThoiHanTruyCap: v.duration(b.ThoiHanTruyCap), // 90/180/365 ngày, hoặc null = vĩnh viễn
   };
 }
 
@@ -25,7 +26,7 @@ router.get('/', optionalAuth, async (req, res) => {
   try {
     const maGV = (req.user && req.user.role === 'teacher') ? req.user.ma : null;
     const [rows] = await pool.query(`
-      SELECT kh.MaKH, kh.TenKH, kh.MoTa, kh.LinhVuc, kh.TrinhDo, kh.ThoiLuong, kh.HocPhi, kh.TrangThai,
+      SELECT kh.MaKH, kh.TenKH, kh.MoTa, kh.LinhVuc, kh.TrinhDo, kh.ThoiLuong, kh.HocPhi, kh.TrangThai, kh.ThoiHanTruyCap,
              gv.MaGV, gv.HoTen AS TenGV,
              (SELECT COUNT(*) FROM BAI_HOC bh WHERE bh.MaKH = kh.MaKH) AS SoBaiHoc,
              (SELECT ROUND(AVG(dg.DiemDanhGia),1)
@@ -75,9 +76,9 @@ router.post('/', auth, teacherOnly, async (req, res) => {
   try {
     const f = courseFields(req.body);
     const MaKH = await insertWithCode(pool, 'KHOA_HOC', 'MaKH', 'KH', (code) => pool.query(
-      `INSERT INTO KHOA_HOC(MaKH,MaGV,TenKH,MoTa,LinhVuc,TrinhDo,ThoiLuong,HocPhi,TrangThai)
-       VALUES(?,?,?,?,?,?,?,?, 'draft')`,
-      [code, req.user.ma, f.TenKH, f.MoTa, f.LinhVuc, f.TrinhDo, f.ThoiLuong, f.HocPhi]));
+      `INSERT INTO KHOA_HOC(MaKH,MaGV,TenKH,MoTa,LinhVuc,TrinhDo,ThoiLuong,HocPhi,TrangThai,ThoiHanTruyCap)
+       VALUES(?,?,?,?,?,?,?,?, 'draft', ?)`,
+      [code, req.user.ma, f.TenKH, f.MoTa, f.LinhVuc, f.TrinhDo, f.ThoiLuong, f.HocPhi, f.ThoiHanTruyCap]));
     res.json({ MaKH });
   } catch (e) { fail(res, e); }
 });
@@ -87,9 +88,9 @@ router.put('/:id', auth, teacherOnly, async (req, res) => {
     const maKH = v.code(req.params.id, 'Mã khóa học');
     const f = courseFields(req.body);
     const [r] = await pool.query(
-      `UPDATE KHOA_HOC SET TenKH=?,MoTa=?,LinhVuc=?,TrinhDo=?,ThoiLuong=?,HocPhi=?
+      `UPDATE KHOA_HOC SET TenKH=?,MoTa=?,LinhVuc=?,TrinhDo=?,ThoiLuong=?,HocPhi=?,ThoiHanTruyCap=?
         WHERE MaKH=? AND MaGV=?`,
-      [f.TenKH, f.MoTa, f.LinhVuc, f.TrinhDo, f.ThoiLuong, f.HocPhi, maKH, req.user.ma]);
+      [f.TenKH, f.MoTa, f.LinhVuc, f.TrinhDo, f.ThoiLuong, f.HocPhi, f.ThoiHanTruyCap, maKH, req.user.ma]);
     if (!r.affectedRows) throw forbidden('Bạn không có quyền sửa khóa học này');
     res.json({ ok: true });
   } catch (e) { fail(res, e); }
@@ -116,6 +117,7 @@ router.get('/:id/enrollment', auth, async (req, res) => {
       `SELECT DISTINCT MaBH FROM LICH_SU_HOC_TAP WHERE MaDK=? AND TrangThaiHoanThanh='hoan_thanh'`, [ent.dk.MaDK]);
     res.json({
       enrolled: true, MaDK: ent.dk.MaDK, NgayDangKy: ent.dk.NgayDangKy, TTDangKy: ent.dk.TTDangKy,
+      NgayHetHan: ent.dk.NgayHetHan, hetHan: ent.reason === 'het_han',
       HocPhi: Number(ent.dk.HocPhi), daThanhToan: ent.paid, entitled: ent.entitled, dangCho: ent.dangCho,
       daHoc: done.map((r) => r.MaBH),
     });
@@ -129,14 +131,49 @@ router.post('/:id/enroll', auth, async (req, res) => {
     const maKH = v.code(req.params.id, 'Mã khóa học');
     const out = await withTx(pool, async (conn) => {
       await conn.query('SELECT MaHV FROM HOC_VIEN WHERE MaHV=? FOR UPDATE', [req.user.ma]);
-      const [[kh]] = await conn.query('SELECT MaKH, HocPhi, TrangThai FROM KHOA_HOC WHERE MaKH=?', [maKH]);
+      const [[kh]] = await conn.query('SELECT MaKH, HocPhi, TrangThai, ThoiHanTruyCap FROM KHOA_HOC WHERE MaKH=?', [maKH]);
       if (!kh || kh.TrangThai !== 'published') throw notFound('Không tìm thấy khóa học');
       const [[cur]] = await conn.query('SELECT MaDK FROM DANG_KY WHERE MaHV=? AND MaKH=? AND NgayHuy IS NULL LIMIT 1', [req.user.ma, maKH]);
       if (cur) return { MaDK: cur.MaDK, already: true };
       const MaDK = await insertWithCode(pool, 'DANG_KY', 'MaDK', 'DK', (code) => conn.query(
-        'INSERT INTO DANG_KY(MaDK,MaHV,MaKH,HocPhi,TTDangKy) VALUES(?,?,?,?,?)',
-        [code, req.user.ma, maKH, Number(kh.HocPhi) || 0, 'da_xac_nhan']));
+        `INSERT INTO DANG_KY(MaDK,MaHV,MaKH,HocPhi,TTDangKy,NgayHetHan)
+         VALUES(?,?,?,?,'da_xac_nhan', ${kh.ThoiHanTruyCap ? 'DATE_ADD(CURRENT_DATE, INTERVAL ? DAY)' : 'NULL'})`,
+        kh.ThoiHanTruyCap
+          ? [code, req.user.ma, maKH, Number(kh.HocPhi) || 0, kh.ThoiHanTruyCap]
+          : [code, req.user.ma, maKH, Number(kh.HocPhi) || 0]));
       return { MaDK, already: false };
+    });
+    res.json(out);
+  } catch (e) { fail(res, e); }
+});
+
+// Đăng ký lại: CHỈ áp dụng khi lượt đăng ký hiện tại ĐÃ HẾT HẠN (còn hạn thì học viên cứ vào học/ôn tập
+// bình thường, không cần thao tác gì). Hủy lượt cũ (giữ nguyên chứng chỉ, lịch sử học tập, kết quả của
+// lượt đó), tạo một lượt đăng ký mới với HỌC PHÍ HIỆN TẠI — luôn phải thanh toán lại như mua mới.
+router.post('/:id/retake', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'student') throw forbidden('Chỉ học viên mới đăng ký lại được khóa học');
+    const maKH = v.code(req.params.id, 'Mã khóa học');
+    const out = await withTx(pool, async (conn) => {
+      await conn.query('SELECT MaHV FROM HOC_VIEN WHERE MaHV=? FOR UPDATE', [req.user.ma]);
+      const [[kh]] = await conn.query('SELECT MaKH, HocPhi, TrangThai, ThoiHanTruyCap FROM KHOA_HOC WHERE MaKH=?', [maKH]);
+      if (!kh || kh.TrangThai !== 'published') throw notFound('Không tìm thấy khóa học');
+      const [[cur]] = await conn.query(
+        'SELECT MaDK, NgayHetHan FROM DANG_KY WHERE MaHV=? AND MaKH=? AND NgayHuy IS NULL LIMIT 1',
+        [req.user.ma, maKH]);
+      if (!cur) throw notFound('Bạn chưa đăng ký khóa học này');
+      const hetHan = cur.NgayHetHan && new Date(cur.NgayHetHan) < new Date(new Date().toDateString());
+      if (!hetHan) throw new AppError(409, 'Khóa học vẫn còn hạn, bạn vào học/ôn tập bình thường, không cần đăng ký lại', 'STILL_VALID');
+
+      await conn.query(`UPDATE DANG_KY SET TTDangKy='da_huy', NgayHuy=CURRENT_DATE WHERE MaDK=?`, [cur.MaDK]);
+      const hocPhiMoi = Number(kh.HocPhi) || 0;
+      const MaDK = await insertWithCode(pool, 'DANG_KY', 'MaDK', 'DK', (code) => conn.query(
+        `INSERT INTO DANG_KY(MaDK,MaHV,MaKH,HocPhi,TTDangKy,NgayHetHan)
+         VALUES(?,?,?,?,'da_xac_nhan', ${kh.ThoiHanTruyCap ? 'DATE_ADD(CURRENT_DATE, INTERVAL ? DAY)' : 'NULL'})`,
+        kh.ThoiHanTruyCap
+          ? [code, req.user.ma, maKH, hocPhiMoi, kh.ThoiHanTruyCap]
+          : [code, req.user.ma, maKH, hocPhiMoi]));
+      return { MaDK, oldMaDK: cur.MaDK, hocPhi: hocPhiMoi };
     });
     res.json(out);
   } catch (e) { fail(res, e); }

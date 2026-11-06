@@ -12,7 +12,8 @@ START TRANSACTION;
 UPDATE HOC_VIEN        SET NgayDK       = DATE_ADD(NgayDK, INTERVAL @n DAY)       WHERE @n > 0;
 UPDATE KHOA_HOC        SET NgayTao      = DATE_ADD(NgayTao, INTERVAL @n DAY)      WHERE @n > 0;
 UPDATE DANG_KY         SET NgayDangKy   = DATE_ADD(NgayDangKy, INTERVAL @n DAY),
-                           NgayHuy      = DATE_ADD(NgayHuy, INTERVAL @n DAY)       WHERE @n > 0;
+                           NgayHuy      = DATE_ADD(NgayHuy, INTERVAL @n DAY),
+                           NgayHetHan   = DATE_ADD(NgayHetHan, INTERVAL @n DAY)    WHERE @n > 0;
 UPDATE LICH_SU_HOC_TAP SET ThoiDiemHoc  = DATE_ADD(ThoiDiemHoc, INTERVAL @n DAY)  WHERE @n > 0;
 UPDATE KET_QUA         SET ThoiGianLam  = DATE_ADD(ThoiGianLam, INTERVAL @n DAY)  WHERE @n > 0;
 UPDATE THANH_TOAN      SET ThoiGian     = DATE_ADD(ThoiGian, INTERVAL @n DAY)     WHERE @n > 0;

@@ -1,10 +1,12 @@
 // Quy tắc "ai được xem/làm gì" ở một chỗ duy nhất để mọi route dùng chung
 const pool = require('../config/db');
 
-// Đủ quyền học: lượt đăng ký còn hiệu lực VÀ (khóa miễn phí HOẶC đã thanh toán ĐƯỢC ADMIN DUYỆT)
+// Đủ quyền học: lượt đăng ký còn hiệu lực VÀ CHƯA HẾT HẠN VÀ (khóa miễn phí HOẶC đã thanh toán ĐƯỢC ADMIN DUYỆT)
+// Hết hạn CHẶN TRƯỚC mọi thứ khác — dù đã trả tiền, quá NgayHetHan vẫn mất quyền xem (phải "Học lại"/mua lại).
 async function studentEntitlement(db, maHV, maKH) {
   const [[dk]] = await (db || pool).query(
-    `SELECT dk.MaDK, dk.TTDangKy, dk.HocPhi, dk.NgayDangKy,
+    `SELECT dk.MaDK, dk.TTDangKy, dk.HocPhi, dk.NgayDangKy, dk.NgayHetHan,
+            (dk.NgayHetHan IS NOT NULL AND dk.NgayHetHan < CURRENT_DATE) AS HetHan,
             EXISTS(SELECT 1 FROM THANH_TOAN tt WHERE tt.MaDK = dk.MaDK AND tt.TrangThaiTT = 'success' AND tt.LoaiGiaoDich = 'thanh_toan') AS DaTra,
             EXISTS(SELECT 1 FROM THANH_TOAN tt WHERE tt.MaDK = dk.MaDK AND tt.TrangThaiTT = 'pending') AS DangCho
        FROM DANG_KY dk
@@ -15,6 +17,7 @@ async function studentEntitlement(db, maHV, maKH) {
   const free = Number(dk.HocPhi) <= 0;
   const paid = free || !!dk.DaTra;
   const dangCho = !paid && !!dk.DangCho;
+  if (dk.HetHan) return { dk, paid, entitled: false, dangCho: false, reason: 'het_han' };
   return { dk, paid, entitled: paid, dangCho, reason: paid ? 'ok' : (dangCho ? 'cho_duyet' : 'chua_thanh_toan') };
 }
 

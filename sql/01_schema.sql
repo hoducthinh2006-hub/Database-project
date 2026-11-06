@@ -47,6 +47,8 @@ CREATE TABLE KHOA_HOC (
   HocPhi     DECIMAL(12,2)  NOT NULL DEFAULT 0 CHECK (HocPhi >= 0),
   NgayTao    DATE           NOT NULL DEFAULT (CURRENT_DATE),
   TrangThai  VARCHAR(30)    NOT NULL DEFAULT 'draft',
+  -- Thời hạn truy cập sau khi đăng ký, tính bằng số ngày: NULL = vĩnh viễn; chỉ nhận 90/180/365 (≈ 3/6/12 tháng)
+  ThoiHanTruyCap INT NULL CHECK (ThoiHanTruyCap IS NULL OR ThoiHanTruyCap IN (90,180,365)),
   FOREIGN KEY (MaGV) REFERENCES GIANG_VIEN(MaGV),
   CHECK (TrangThai IN ('draft','published','archived'))
 );
@@ -74,6 +76,9 @@ CREATE TABLE DANG_KY (
   NgayDangKy  DATE           NOT NULL DEFAULT (CURRENT_DATE),
   NgayHuy     DATE,
   TTDangKy    VARCHAR(50)    NOT NULL DEFAULT 'cho_xac_nhan',
+  -- Ngày hết hạn truy cập của RIÊNG lượt đăng ký này = NgayDangKy + KHOA_HOC.ThoiHanTruyCap (chụp lại lúc đăng ký,
+  -- giống cách HocPhi được chụp lại ở trên). NULL = khóa vĩnh viễn hoặc chưa tính được.
+  NgayHetHan  DATE,
   FOREIGN KEY (MaHV) REFERENCES HOC_VIEN(MaHV),
   FOREIGN KEY (MaKH) REFERENCES KHOA_HOC(MaKH),
   CHECK (NgayHuy IS NULL OR NgayHuy >= NgayDangKy),
