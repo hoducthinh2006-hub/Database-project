@@ -69,15 +69,14 @@ router.get('/courses/:id/students', async (req, res) => {
     const [rows] = await pool.query(`
       SELECT dk.MaDK, hv.MaHV, hv.HoTen, hv.Email, dk.NgayDangKy, dk.TTDangKy,
              COUNT(DISTINCT CASE WHEN ls.TrangThaiHoanThanh='hoan_thanh' THEN ls.MaBH END) AS SoBaiHoanThanh,
-             (SELECT ROUND(AVG(best.Diem),1) FROM (
-                SELECT MAX(DiemSo) AS Diem FROM KET_QUA WHERE MaDK=dk.MaDK GROUP BY MaBKT
-              ) best) AS DiemTB,
+             ROUND(dtb.DiemTrungBinh, 1) AS DiemTB,
              EXISTS(SELECT 1 FROM THANH_TOAN tt WHERE tt.MaDK=dk.MaDK AND tt.TrangThaiTT='success') AS DaThanhToan
       FROM DANG_KY dk
       JOIN HOC_VIEN hv ON hv.MaHV = dk.MaHV
       LEFT JOIN LICH_SU_HOC_TAP ls ON ls.MaDK = dk.MaDK
+      LEFT JOIN V_DIEM_TB dtb ON dtb.MaDK = dk.MaDK
       WHERE dk.MaKH = ?
-      GROUP BY dk.MaDK, hv.MaHV, hv.HoTen, hv.Email, dk.NgayDangKy, dk.TTDangKy
+      GROUP BY dk.MaDK, hv.MaHV, hv.HoTen, hv.Email, dk.NgayDangKy, dk.TTDangKy, dtb.DiemTrungBinh
       ORDER BY dk.NgayDangKy DESC`, [maKH]);
 
     const list = rows.map(r => ({
