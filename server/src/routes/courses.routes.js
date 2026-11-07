@@ -61,11 +61,16 @@ router.get('/:id', optionalAuth, async (req, res) => {
     } else if (u) quyen = { xem: false, lyDo: 'khong_phai_hoc_vien' };
 
     const [rows] = await pool.query(
-      'SELECT MaBH,TenBH,ThuTu,ThoiLuong,VideoBaiGiang FROM BAI_HOC WHERE MaKH=? ORDER BY ThuTu', [maKH]);
+      'SELECT MaBH,TenBH,ThuTu,ThoiLuong,VideoBaiGiang,GiaoTrinh,ThucHanh FROM BAI_HOC WHERE MaKH=? ORDER BY ThuTu', [maKH]);
+    // video, giáo trình, thực hành đều là nội dung khóa học: chưa đủ quyền thì KHÔNG gửi nội dung, chỉ gửi cờ co*
     const lessons = rows.map((l) => ({
       MaBH: l.MaBH, TenBH: l.TenBH, ThuTu: l.ThuTu, ThoiLuong: l.ThoiLuong,
       coVideo: !!l.VideoBaiGiang,
       VideoBaiGiang: quyen.xem ? l.VideoBaiGiang : null,
+      coGiaoTrinh: !!(l.GiaoTrinh && l.GiaoTrinh.trim()),
+      GiaoTrinh: quyen.xem ? l.GiaoTrinh : null,
+      coThucHanh: !!(l.ThucHanh && l.ThucHanh.trim()),
+      ThucHanh: quyen.xem ? l.ThucHanh : null,
     }));
     res.json({ ...kh, lessons, quyen });
   } catch (e) { fail(res, e); }
@@ -115,11 +120,21 @@ router.get('/:id/enrollment', auth, async (req, res) => {
     if (!ent.dk) return res.json({ enrolled: false });
     const [done] = await pool.query(
       `SELECT DISTINCT MaBH FROM LICH_SU_HOC_TAP WHERE MaDK=? AND TrangThaiHoanThanh='hoan_thanh'`, [ent.dk.MaDK]);
+    // Lịch sử học tập theo từng bài (thời điểm bắt đầu, phần trăm đóng góp cho khóa) và lịch sử làm bài kiểm tra của lượt đăng ký này
+    const [lichSu] = await pool.query(
+      `SELECT MaBH, ThoiDiemHoc, TienDoTangThem, TrangThaiHoanThanh FROM LICH_SU_HOC_TAP WHERE MaDK=? ORDER BY ThoiDiemHoc`, [ent.dk.MaDK]);
+    const [ketQua] = await pool.query(
+      `SELECT MaBKT, LanLam, DiemSo, ThoiGianLam FROM KET_QUA WHERE MaDK=? ORDER BY MaBKT, LanLam`, [ent.dk.MaDK]);
+    const [[td]] = await pool.query(
+      `SELECT TongSoBai, SoBaiHoanThanh, COALESCE(TienDoPhanTram, 0) AS TienDoPhanTram FROM V_TIEN_DO WHERE MaDK=?`, [ent.dk.MaDK]);
     res.json({
       enrolled: true, MaDK: ent.dk.MaDK, NgayDangKy: ent.dk.NgayDangKy, TTDangKy: ent.dk.TTDangKy,
       NgayHetHan: ent.dk.NgayHetHan, hetHan: ent.reason === 'het_han',
       HocPhi: Number(ent.dk.HocPhi), daThanhToan: ent.paid, entitled: ent.entitled, dangCho: ent.dangCho,
       daHoc: done.map((r) => r.MaBH),
+      lichSu: lichSu.map((r) => ({ ...r, TienDoTangThem: Number(r.TienDoTangThem) })),
+      ketQua: ketQua.map((r) => ({ ...r, DiemSo: Number(r.DiemSo) })),
+      tienDo: td ? { tong: td.TongSoBai, xong: td.SoBaiHoanThanh, phanTram: Number(td.TienDoPhanTram) } : { tong: 0, xong: 0, phanTram: 0 },
     });
   } catch (e) { fail(res, e); }
 });
@@ -190,6 +205,8 @@ function lessonFields(b) {
     TenBH: v.text(b.TenBH, { name: 'Tên bài học', min: 1, max: 150 }),
     ThoiLuong: v.int(b.ThoiLuong === undefined || b.ThoiLuong === '' ? 0 : b.ThoiLuong, { name: 'Thời lượng', min: 0, max: 2000 }),
     VideoBaiGiang: v.youtube(b.VideoBaiGiang),
+    GiaoTrinh: v.paragraph(b.GiaoTrinh, { name: 'Giáo trình', max: 20000 }),   // nội dung/tài liệu của bài (văn bản nhiều dòng)
+    ThucHanh: v.paragraph(b.ThucHanh, { name: 'Bài thực hành', max: 20000 }),  // yêu cầu bài thực hành của bài
   };
 }
 
@@ -203,8 +220,8 @@ router.post('/:id/lessons', auth, teacherOnly, async (req, res) => {
       if (!kh || kh.MaGV !== req.user.ma) throw forbidden('Bạn không có quyền');
       const [[mx]] = await conn.query('SELECT COALESCE(MAX(ThuTu),0)+1 AS t FROM BAI_HOC WHERE MaKH=?', [maKH]);
       return insertWithCode(pool, 'BAI_HOC', 'MaBH', 'BH', (code) => conn.query(
-        'INSERT INTO BAI_HOC(MaBH,MaKH,TenBH,ThuTu,ThoiLuong,VideoBaiGiang) VALUES(?,?,?,?,?,?)',
-        [code, maKH, f.TenBH, mx.t, f.ThoiLuong, f.VideoBaiGiang]));
+        'INSERT INTO BAI_HOC(MaBH,MaKH,TenBH,ThuTu,ThoiLuong,VideoBaiGiang,GiaoTrinh,ThucHanh) VALUES(?,?,?,?,?,?,?,?)',
+        [code, maKH, f.TenBH, mx.t, f.ThoiLuong, f.VideoBaiGiang, f.GiaoTrinh, f.ThucHanh]));
     });
     res.json({ MaBH });
   } catch (e) { fail(res, e); }
@@ -216,7 +233,8 @@ router.put('/lessons/:maBH', auth, teacherOnly, async (req, res) => {
     const f = lessonFields(req.body);
     const bh = await ownerOfLesson(maBH);
     if (!bh || bh.MaGV !== req.user.ma) throw forbidden('Bạn không có quyền');
-    await pool.query('UPDATE BAI_HOC SET TenBH=?,ThoiLuong=?,VideoBaiGiang=? WHERE MaBH=?', [f.TenBH, f.ThoiLuong, f.VideoBaiGiang, maBH]);
+    await pool.query('UPDATE BAI_HOC SET TenBH=?,ThoiLuong=?,VideoBaiGiang=?,GiaoTrinh=?,ThucHanh=? WHERE MaBH=?',
+      [f.TenBH, f.ThoiLuong, f.VideoBaiGiang, f.GiaoTrinh, f.ThucHanh, maBH]);
     res.json({ ok: true });
   } catch (e) { fail(res, e); }
 });

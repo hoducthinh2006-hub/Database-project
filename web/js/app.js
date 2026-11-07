@@ -978,6 +978,67 @@
     }[q.lyDo] || ["Bài giảng đang được khóa", "", ""];
     return `<div class="video-lock" style="background:${th.grad}"><div class="vl-card"><span class="vl-ic">${ico("lock")}</span><b>${M[0]}</b><p>${M[1]}</p><div class="vl-act">${M[2]}</div></div></div>`;
   }
+  // Giáo trình + bài thực hành của bài đang chọn. Nội dung chỉ có khi máy chủ cho phép xem; chưa đủ quyền thì chỉ báo là có.
+  function lessonDocsHTML(l, q) {
+    if (!q.xem) {
+      return l.coGiaoTrinh || l.coThucHanh
+        ? `<div class="lesson-docs locked">${ico("lock")} Giáo trình${l.coThucHanh ? " và bài thực hành" : ""} của bài này sẽ mở khi bạn đủ quyền học khóa học.</div>` : "";
+    }
+    const parts = [];
+    if (l.GiaoTrinh && l.GiaoTrinh.trim()) parts.push(["Giáo trình", "book", l.GiaoTrinh]);
+    if (l.ThucHanh && l.ThucHanh.trim()) parts.push(["Bài thực hành", "flask", l.ThucHanh]);
+    if (!parts.length) return "";
+    return `<div class="lesson-docs">${parts.map(([t, ic, txt]) => `<section class="ld-sec"><h4>${ico(ic)} ${t}</h4><div class="ld-body">${esc(txt)}</div></section>`).join("")}</div>`;
+  }
+  const fmtDT = (t) => { const d = new Date(t); return isNaN(d) ? "—" : d.toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }); };
+  const QUIZ_PASS = 0.7; // phải khớp PASS_RATIO ở máy chủ: đạt khi từ 70% điểm tối đa
+
+  // Lịch sử học tập của MỘT bài: thời điểm bắt đầu, trạng thái và phần trăm bài này cộng vào tiến độ khóa (cộng dồn qua các bài đã xong)
+  function lessonStudyHTML(cur, lessons, en) {
+    const h = (en.lichSu || []).find((x) => x.MaBH === cur.MaBH);
+    const done = !!h && h.TrangThaiHoanThanh === "hoan_thanh";
+    const st = done ? ["Đã hoàn thành", "ok"] : h ? ["Đang học", "muted"] : ["Chưa bắt đầu", "muted"];
+    const td = en.tienDo || { tong: lessons.length, xong: 0, phanTram: 0 };
+    const moiBai = lessons.length ? Math.trunc(10000 / lessons.length) / 100 : 0;
+    return `<div class="lesson-hist" id="lessonHist">
+      <h4>${ico("clock")} Lịch sử học tập của bài này</h4>
+      <div class="lh-grid">
+        <div><span>Bắt đầu học</span><b>${h ? esc(fmtDT(h.ThoiDiemHoc)) : "Chưa học"}</b></div>
+        <div><span>Trạng thái bài</span><b><span class="pill ${st[1]}">${st[0]}</span></b></div>
+        <div><span>Cộng vào tiến độ khóa</span><b>${done ? "+" + cleanNum(h.TienDoTangThem) + "%" : "+0%"}</b>${done ? "" : `<small>sẽ cộng khoảng ${cleanNum(moiBai)}% khi học xong</small>`}</div>
+      </div>
+      <div class="prog-line"><div class="bar ${td.phanTram >= 100 ? "gold" : ""}"><i style="width:${Math.min(100, td.phanTram)}%"></i></div><span class="pc">${cleanNum(td.phanTram)}%</span></div>
+      <span class="muted lh-note">Tiến độ khóa học: ${td.xong}/${td.tong} bài đã hoàn thành. Mỗi bài học xong được cộng dồn vào tiến độ chung của khóa.</span>
+    </div>`;
+  }
+  // Bài kiểm tra thuộc bài học đang xem + lịch sử các lần làm bài của học viên
+  function lessonQuizHTML(cur, c, en) {
+    const qs = (c.quizzes || []).filter((x) => x.MaBH === cur.MaBH);
+    const isStu = AUTH.user && AUTH.user.role === "student";
+    if (!qs.length) return `<div class="lesson-quiz" id="lessonQuiz"><h4>📝 Bài kiểm tra của bài học</h4><p class="muted">Bài học này chưa có bài kiểm tra.</p></div>`;
+    return `<div class="lesson-quiz" id="lessonQuiz"><h4>📝 Bài kiểm tra của bài học</h4>${qs.map((k) => {
+      const hist = ((en && en.ketQua) || []).filter((r) => r.MaBKT === k.MaBKT);
+      const used = hist.length, best = used ? Math.max(...hist.map((r) => r.DiemSo)) : null;
+      const het = !!k.SoLanLamToiDa && used >= k.SoLanLamToiDa, nguong = k.DiemToiDa * QUIZ_PASS;
+      const act = !isStu ? `<span class="muted" style="font-size:.8rem">Đăng nhập học viên để làm</span>`
+        : !en ? `<button class="btn btn-ghost btn-sm" data-enroll>Đăng ký để làm</button>`
+        : en.dangCho ? `<span class="muted" style="font-size:.8rem">⏳ Chờ admin duyệt</span>`
+        : en.hetHan ? `<button class="btn btn-ghost btn-sm" data-retake>Đăng ký lại</button>`
+        : !en.entitled ? `<button class="btn btn-ghost btn-sm" data-pay-detail="${esc(en.MaDK)}">Thanh toán để làm</button>`
+        : het ? `<span class="muted" style="font-size:.8rem">Đã hết lượt làm bài</span>`
+        : `<button class="btn btn-accent btn-sm" data-do-quiz="${k.MaBKT}">${used ? "Làm lại" : "Làm bài"} →</button>`;
+      return `<div class="lq-card">
+        <div class="lq-head">
+          <div><b>${esc(k.TenBKT)}</b>
+            <div class="qi-meta"><span>📋 ${k.SoCauHoi} câu</span><span>⏱ ${k.ThoiGian} phút</span><span>🎯 ${cleanNum(k.DiemToiDa)} điểm</span><span>🔁 ${k.SoLanLamToiDa ? `đã làm ${used}/${k.SoLanLamToiDa} lượt` : `đã làm ${used} lần · không giới hạn`}</span>${best != null ? `<span>🏅 Cao nhất ${cleanNum(best)}/${cleanNum(k.DiemToiDa)}</span>` : ""}</div></div>
+          <div class="qi-act">${act}</div>
+        </div>
+        ${en ? `<div class="lq-histwrap"><span class="muted lq-histtitle">Lịch sử làm bài</span>${used
+          ? `<table class="data-table lq-hist"><thead><tr><th>Lần</th><th>Điểm</th><th>Kết quả</th><th>Thời gian làm</th></tr></thead><tbody>${hist.map((r) => `<tr><td class="tnum">${r.LanLam}</td><td class="tnum">${cleanNum(r.DiemSo)}/${cleanNum(k.DiemToiDa)}</td><td>${r.DiemSo >= nguong ? `<span class="pill ok">Đạt</span>` : `<span class="pill no">Chưa đạt</span>`}</td><td>${esc(fmtDT(r.ThoiGianLam))}</td></tr>`).join("")}</tbody></table>`
+          : `<p class="muted lq-none">Bạn chưa làm lần nào.</p>`}</div>` : ""}
+      </div>`;
+    }).join("")}</div>`;
+  }
   function viewDetail() {
     const c = detailCache;
     if (!c) return `<section class="wrap" style="padding-top:12px"><button class="back-btn" data-go="catalog">${ico("arrow-r")} Quay lại</button><div class="empty-state"><div class="es-ic">⚠️</div><h3>Không tải được khóa học</h3></div></section>`;
@@ -1004,6 +1065,9 @@
         : !q.xem && cur && hasVid(cur) ? videoLockHTML(c, q, th)
         : `<div class="video-ph" style="background:${th.grad}"><span class="glyph">${th.glyph}</span></div>`}
       ${en && q.xem && cur ? lessonActionBar(cur, lessons, doneSet) : ""}
+      ${cur ? lessonDocsHTML(cur, q) : ""}
+      ${cur ? lessonQuizHTML(cur, c, en) : ""}
+      ${en && q.xem && cur ? lessonStudyHTML(cur, lessons, en) : ""}
       <h3 style="font-size:1.1rem;margin-bottom:12px">Nội dung khóa học · ${lessons.length} bài</h3>
       ${lessons.length ? `<div class="curr-sec">${lessons.map((l, i) => {
         const hasV = hasVid(l), lk = hasV && !q.xem, active = l.MaBH === nav.lesson, done = doneSet.has(l.MaBH);
@@ -1631,6 +1695,14 @@
     try { left = Math.max(0, Math.ceil(Number((await API.openLesson(maBH)).conLai) || 0)); }
     catch (e) { left = 0; } // lỗi mạng: cứ cho bấm, máy chủ sẽ từ chối nếu chưa đủ thời gian
     if (LTIMER === t) runLessonCountdown(t, left);
+    // mở bài là ghi nhận thời điểm bắt đầu học → nạp lại lịch sử học tập và vẽ lại khung lịch sử của bài (không vẽ lại cả trang)
+    try {
+      if (nav.view === "detail" && detailCache && nav.lesson === maBH) {
+        detailCache._enroll = await API.getEnrollment(detailCache.MaKH);
+        const el = $("#lessonHist"), lessons = detailCache.lessons || [], cur = lessons.find((l) => l.MaBH === maBH), en = detailCache._enroll;
+        if (el && cur && en && en.enrolled) el.outerHTML = lessonStudyHTML(cur, lessons, en);
+      }
+    } catch (e) { /* khung lịch sử chỉ để xem, lỗi mạng không ảnh hưởng việc học */ }
   }
   function lessonActionBar(cur, lessons, doneSet) {
     const done = doneSet.has(cur.MaBH), idx = lessons.findIndex((l) => l.MaBH === cur.MaBH), next = lessons[idx + 1];
@@ -1646,6 +1718,8 @@
   async function doCompleteLesson(maBH) {
     try {
       const r = await API.completeLesson(maBH);
+      // nạp lại từ máy chủ: có đủ lịch sử học (phần trăm bài này cộng vào khóa) và tiến độ khóa mới sau khi cộng dồn
+      try { detailCache._enroll = await API.getEnrollment(detailCache.MaKH); } catch (e) { /* dùng bản cập nhật tại chỗ bên dưới */ }
       const en = detailCache._enroll; en.daHoc = en.daHoc || [];
       if (!en.daHoc.includes(maBH)) en.daHoc.push(maBH);
       en.TTDangKy = r.trangThai || en.TTDangKy;
@@ -2379,6 +2453,8 @@
           <div class="field"><label>Tên bài học *</label><input id="lfTen" value="${lesson ? esc(lesson.TenBH) : ""}" placeholder="VD: Giới thiệu HTML"></div>
           <div class="field-row"><div class="field"><label>Thời lượng (phút)</label><input id="lfDur" type="number" min="0" value="${lesson ? lesson.ThoiLuong || "" : ""}" placeholder="18"></div></div>
           <div class="field"><label>Link video YouTube</label><input id="lfVid" value="${lesson ? esc(lesson.VideoBaiGiang) : ""}" placeholder="https://youtu.be/... (để trống nếu chưa có)"></div>
+          <div class="field"><label>Giáo trình</label><textarea id="lfGT" rows="6" placeholder="Nội dung/tài liệu của bài học. Xuống dòng được giữ nguyên khi học viên xem.">${lesson ? esc(lesson.GiaoTrinh || "") : ""}</textarea></div>
+          <div class="field"><label>Bài thực hành</label><textarea id="lfTH" rows="4" placeholder="Yêu cầu bài thực hành học viên cần làm sau bài học (để trống nếu không có).">${lesson ? esc(lesson.ThucHanh || "") : ""}</textarea></div>
           <div class="form-actions"><button type="button" class="btn btn-ghost" data-close>Hủy</button><button type="submit" class="btn btn-primary" id="lfSubmit">${lesson ? "Lưu" : "Thêm bài học"}</button></div>
         </form></div>`);
     $$("[data-close]").forEach((b) => b.onclick = closeModal);
@@ -2386,7 +2462,8 @@
   }
   async function saveLesson(maKH, lesson) {
     const err = $("#lfErr"), fail = (m) => { err.textContent = m; err.hidden = false; };
-    const body = { TenBH: $("#lfTen").value.trim(), ThoiLuong: parseInt($("#lfDur").value, 10) || 0, VideoBaiGiang: $("#lfVid").value.trim() };
+    const body = { TenBH: $("#lfTen").value.trim(), ThoiLuong: parseInt($("#lfDur").value, 10) || 0, VideoBaiGiang: $("#lfVid").value.trim(),
+      GiaoTrinh: $("#lfGT").value.trim(), ThucHanh: $("#lfTH").value.trim() };
     if (!body.TenBH) return fail("Vui lòng nhập tên bài học.");
     if (body.VideoBaiGiang && !ytEmbed(body.VideoBaiGiang)) return fail("Link YouTube không hợp lệ (hỗ trợ youtu.be/... hoặc youtube.com/watch?v=...).");
     const btn = $("#lfSubmit"); btn.disabled = true;
@@ -2437,30 +2514,32 @@
   }
 
   /* ============ DANH SÁCH BÀI KIỂM TRA (trong chi tiết khóa) ============ */
+  // Tab "Bài kiểm tra": mỗi bài kiểm tra thuộc một bài học, nên liệt kê THEO TÊN BÀI HỌC; bấm "Vào bài học" để làm bài
+  // và xem lịch sử làm bài ngay trong bài học đó (bài kiểm tra không còn đứng riêng ngoài bài học).
   function quizListHTML() {
-    const c = detailCache, quizzes = c.quizzes || [];
-    const en = c._enroll || {}, enrolled = en.enrolled, entitled = en.entitled;
-    const isStudent = AUTH.user && AUTH.user.role === "student";
-    if (!quizzes.length)
-      return `<div class="empty-state"><div class="es-ic">📝</div><h3>Chưa có bài kiểm tra</h3><p>Khóa học này chưa có bài kiểm tra nào.</p></div>`;
-    return `<div class="quiz-list">${quizzes.map((q) => `
-      <div class="quiz-item">
+    const c = detailCache, quizzes = c.quizzes || [], lessons = c.lessons || [];
+    const en = c._enroll && c._enroll.enrolled ? c._enroll : null;
+    const coBai = lessons.filter((l) => quizzes.some((k) => k.MaBH === l.MaBH));
+    if (!coBai.length)
+      return `<div class="empty-state"><div class="es-ic">📝</div><h3>Chưa có bài kiểm tra</h3><p>Khóa học này chưa có bài học nào kèm bài kiểm tra.</p></div>`;
+    return `<p class="muted" style="margin-bottom:14px;font-size:.88rem">Mỗi bài kiểm tra nằm trong một bài học. Chọn bài học để vào làm bài và xem lịch sử làm bài.</p>
+    <div class="quiz-list">${coBai.map((l) => {
+      const idx = lessons.indexOf(l) + 1;
+      const ks = quizzes.filter((k) => k.MaBH === l.MaBH);
+      return `<div class="quiz-item">
         <div class="qi-ic">📝</div>
         <div class="qi-main">
-          <b>${esc(q.TenBKT)}</b>
-          <div class="qi-meta">
-            <span>📋 ${q.SoCauHoi} câu</span><span>⏱ ${q.ThoiGian} phút</span><span>🎯 ${q.DiemToiDa} điểm</span>
-            <span>🔁 ${q.SoLanLamToiDa ? `tối đa ${q.SoLanLamToiDa} lượt` : "không giới hạn"}</span>
-            <span class="muted">· ${esc(q.TenBH)}</span>
-          </div>
+          <b>Bài ${idx}. ${esc(l.TenBH)}</b>
+          ${ks.map((k) => {
+            const hist = ((en && en.ketQua) || []).filter((r) => r.MaBKT === k.MaBKT);
+            const best = hist.length ? Math.max(...hist.map((r) => r.DiemSo)) : null;
+            return `<div class="qi-meta"><span>${esc(k.TenBKT)}</span><span>📋 ${k.SoCauHoi} câu</span><span>⏱ ${k.ThoiGian} phút</span>
+              ${en ? (hist.length ? `<span>🔁 Đã làm ${hist.length} lần</span><span class="${best >= k.DiemToiDa * QUIZ_PASS ? "sc-good" : ""}">🏅 Cao nhất ${cleanNum(best)}/${cleanNum(k.DiemToiDa)}</span>` : `<span class="muted">Chưa làm</span>`) : ""}</div>`;
+          }).join("")}
         </div>
-        <div class="qi-act">${isStudent
-          ? (!enrolled ? `<button class="btn btn-ghost btn-sm" data-enroll>Đăng ký để làm</button>`
-            : en.dangCho ? `<span class="muted" style="font-size:.8rem">⏳ Chờ admin duyệt</span>`
-            : !entitled ? `<button class="btn btn-ghost btn-sm" data-pay-detail="${esc(en.MaDK)}">Thanh toán để làm</button>`
-            : `<button class="btn btn-accent btn-sm" data-do-quiz="${q.MaBKT}">Làm bài →</button>`)
-          : `<span class="muted" style="font-size:.8rem">Đăng nhập học viên để làm</span>`}</div>
-      </div>`).join("")}</div>`;
+        <div class="qi-act"><button class="btn btn-accent btn-sm" data-open-lesson="${l.MaBH}">Vào bài học →</button></div>
+      </div>`;
+    }).join("")}</div>`;
   }
 
   /* ============ LÀM BÀI KIỂM TRA ============ */
@@ -2537,7 +2616,7 @@
         }).join("")}
       </div>
       <div class="quiz-foot">
-        <button class="btn btn-ghost" data-go-detail="${q.MaKH}">← Về khóa học</button>
+        <button class="btn btn-ghost" data-go-detail="${q.MaKH}">← Về bài học</button>
         ${r.conLuot ? `<button class="btn btn-accent" data-quiz-retry="${q.MaBKT}">Làm lại →</button>` : `<span class="muted">Đã hết lượt làm bài</span>`}
       </div>
     </section>`;
@@ -2678,6 +2757,11 @@
     $$("[data-auth]").forEach((el) => el.onclick = () => openAuth(el.dataset.auth));
     $$("[data-open]").forEach((el) => el.onclick = () => { MO.morphFrom(el); go("detail", el.dataset.open); });
     $$("[data-tab]").forEach((el) => el.onclick = () => { nav.tab = el.dataset.tab; render("content"); });
+    // từ tab "Bài kiểm tra" vào đúng bài học, cuộn tới phần bài kiểm tra của bài đó
+    $$("[data-open-lesson]").forEach((el) => el.onclick = () => {
+      nav.lesson = el.dataset.openLesson; nav.tab = "curr"; render("content");
+      setTimeout(() => { const t = $("#lessonQuiz"); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); }, 80);
+    });
     $$("[data-lesson]").forEach((el) => el.onclick = () => { nav.lesson = el.dataset.lesson; render("content"); });
     $$("[data-cat]").forEach((el) => el.onclick = () => { catState.cat = el.dataset.cat; render("content"); });
     // danh mục: gõ tìm / đổi sắp xếp chỉ vẽ lại phần lưới
@@ -2709,9 +2793,11 @@
     $$("[data-do-quiz]").forEach((el) => el.onclick = () => go("quiz", el.dataset.doQuiz));
     $$("[data-ans]").forEach((el) => el.onclick = () => selectAnswer(el.dataset.ans, el));
     $$("[data-quiz-submit]").forEach((el) => el.onclick = () => submitQuiz());
-    $$("[data-quiz-cancel]").forEach((el) => el.onclick = () => go("detail", el.dataset.quizCancel, "quiz"));
+    // rời bài kiểm tra thì quay về ĐÚNG bài học chứa nó (bài kiểm tra nằm trong bài học)
+    const backToLesson = (maKH) => { pendingLesson = QUIZ && QUIZ.bkt ? QUIZ.bkt.MaBH : null; go("detail", maKH); };
+    $$("[data-quiz-cancel]").forEach((el) => el.onclick = () => backToLesson(el.dataset.quizCancel));
     $$("[data-quiz-retry]").forEach((el) => el.onclick = () => go("quiz", el.dataset.quizRetry));
-    $$("[data-go-detail]").forEach((el) => el.onclick = () => go("detail", el.dataset.goDetail, "quiz"));
+    $$("[data-go-detail]").forEach((el) => el.onclick = () => backToLesson(el.dataset.goDetail));
     // quản lý quiz (giảng viên)
     $$("[data-add-quiz]").forEach((el) => el.onclick = () => openQuizForm(el.dataset.addQuiz, null));
     $$("[data-edit-quiz]").forEach((el) => el.onclick = () => { const q = (detailCache.quizzes || []).find((x) => x.MaBKT === el.dataset.editQuiz); openQuizForm(q.MaBH, q); });

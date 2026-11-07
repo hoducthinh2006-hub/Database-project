@@ -1276,3 +1276,32 @@ html.fx-lite .composer::before{display:none;}
 .rp-card:hover{transform:translateY(-2px);border-color:var(--border-strong);background:var(--surface-3);box-shadow:0 12px 28px -14px var(--glow);}
 .rp-card b{font-size:.96rem;line-height:1.35;}
 .rp-card span{font-size:.84rem;color:var(--dim);line-height:1.5;}
+
+/* ===== Giáo trình + bài thực hành của bài học (trang chi tiết khóa) ===== */
+.lesson-docs{display:grid;gap:14px;margin:18px 0 26px;}
+.lesson-docs.locked{display:flex;align-items:center;gap:10px;padding:14px 18px;border-radius:var(--r-lg);background:var(--surface);border:1px dashed var(--border-strong);color:var(--dim);font-size:.88rem;}
+.lesson-docs.locked .ico{width:16px;height:16px;flex:none;}
+.ld-sec{padding:18px 22px;border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--border);}
+.ld-sec h4{display:flex;align-items:center;gap:9px;font-size:1rem;margin-bottom:10px;}
+.ld-sec h4 .ico{width:18px;height:18px;color:var(--accent);}
+.ld-body{white-space:pre-wrap;line-height:1.75;font-size:.93rem;color:var(--ink-soft,var(--ink));overflow-wrap:anywhere;}
+
+/* ===== Bài kiểm tra + lịch sử học tập NẰM TRONG bài học (trang chi tiết khóa) ===== */
+.lesson-quiz,.lesson-hist{margin:0 0 26px;padding:18px 22px;border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--border);}
+.lesson-quiz h4,.lesson-hist h4{display:flex;align-items:center;gap:9px;font-size:1rem;margin-bottom:14px;}
+.lesson-hist h4 .ico{width:18px;height:18px;color:var(--accent);}
+.lq-card{padding:14px 0;border-top:1px solid var(--border);}
+.lq-card:first-of-type{border-top:0;padding-top:0;}
+.lq-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+.lq-head b{font-size:.98rem;}
+.lq-histwrap{margin-top:12px;}
+.lq-histtitle{display:block;font-size:.78rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;margin-bottom:6px;}
+.lq-none{font-size:.86rem;}
+.lh-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px;}
+.lh-grid>div{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:var(--r-md);background:var(--surface-2);border:1px solid var(--border);}
+.lh-grid span{font-size:.76rem;color:var(--dim);}
+.lh-grid b{font-size:.95rem;}
+.lh-grid small{font-size:.74rem;color:var(--dim);}
+.lh-note{display:block;margin-top:8px;font-size:.8rem;}
+.quiz-item .qi-meta + .qi-meta{margin-top:6px;}
+.sc-good{color:#34d399;font-weight:600;}
