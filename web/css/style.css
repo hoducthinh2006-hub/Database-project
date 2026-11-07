@@ -419,7 +419,7 @@ input[type=date]{color-scheme:dark;}
 .rt-wrap{display:inline-flex;align-items:center;gap:2px;}
 .rt-star{font-size:.72em;font-style:normal;line-height:1;}
 .ccard .rating b{font-weight:700;}
-.ccard .metarow{display:flex;gap:14px;font-size:.76rem;color:var(--dim);}
+.ccard .metarow{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.76rem;color:var(--dim);}
 .ccard .metarow span{display:inline-flex;align-items:center;gap:5px;}
 .ccard .metarow .ico{width:14px;height:14px;}
 .ccard .foot{margin-top:auto;padding-top:12px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}

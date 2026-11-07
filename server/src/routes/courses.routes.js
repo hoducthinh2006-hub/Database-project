@@ -27,6 +27,8 @@ router.get('/', optionalAuth, async (req, res) => {
     const maGV = (req.user && req.user.role === 'teacher') ? req.user.ma : null;
     const [rows] = await pool.query(`
       SELECT kh.MaKH, kh.TenKH, kh.MoTa, kh.LinhVuc, kh.TrinhDo, kh.ThoiLuong, kh.HocPhi, kh.TrangThai, kh.ThoiHanTruyCap,
+             -- thời lượng học dự kiến (phút): số giảng viên khai báo, nhưng không bao giờ ít hơn tổng thời lượng các bài đang có
+             GREATEST(COALESCE(kh.ThoiLuong, 0), (SELECT COALESCE(SUM(bh3.ThoiLuong), 0) FROM BAI_HOC bh3 WHERE bh3.MaKH = kh.MaKH)) AS ThoiLuongDuKien,
              gv.MaGV, gv.HoTen AS TenGV,
              (SELECT COUNT(*) FROM BAI_HOC bh WHERE bh.MaKH = kh.MaKH) AS SoBaiHoc,
              (SELECT ROUND(AVG(dg.DiemDanhGia),1)
@@ -72,7 +74,8 @@ router.get('/:id', optionalAuth, async (req, res) => {
       coThucHanh: !!(l.ThucHanh && l.ThucHanh.trim()),
       ThucHanh: quyen.xem ? l.ThucHanh : null,
     }));
-    res.json({ ...kh, lessons, quyen });
+    const tongPhutBai = rows.reduce((s, l) => s + (Number(l.ThoiLuong) || 0), 0);
+    res.json({ ...kh, ThoiLuongDuKien: Math.max(Number(kh.ThoiLuong) || 0, tongPhutBai), lessons, quyen });
   } catch (e) { fail(res, e); }
 });
 

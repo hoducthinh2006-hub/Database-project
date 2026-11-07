@@ -684,6 +684,12 @@
   }
 
   /* ============ card khóa học ============ */
+  // 250 → "4 giờ 10 phút", 90 → "1 giờ 30 phút", 45 → "45 phút", 120 → "2 giờ"
+  function fmtDur(min) {
+    const m = Math.round(Number(min) || 0); if (m <= 0) return "";
+    const h = Math.floor(m / 60), r = m % 60;
+    return h ? `${h} giờ${r ? ` ${r} phút` : ""}` : `${r} phút`;
+  }
   function cardHTML(c) {
     const th = themeOf(c), rating = c.DiemTB != null ? Number(c.DiemTB) : null, free = !(Number(c.HocPhi) > 0);
     return `
@@ -700,6 +706,7 @@
         <div class="gv"><span class="gv-ava">${esc((c.TenGV || "?").split(" ").pop()[0])}</span>${esc(c.TenGV)}</div>
         <div class="metarow">
           <span>${ico("layers")} ${c.SoBaiHoc || 0} bài học</span>
+          ${fmtDur(c.ThoiLuongDuKien) ? `<span title="Thời lượng học dự kiến">${ico("clock")} ${fmtDur(c.ThoiLuongDuKien)}</span>` : ""}
           <span>${ico("users")} ${Number(c.SoHocVien || 0).toLocaleString("vi-VN")}</span>
         </div>
         <div class="foot">
@@ -1087,6 +1094,7 @@
           <p class="desc">${esc(c.MoTa || "")}</p>
           <div class="detail-meta">
             <span>${ico("layers")} <b>${lessons.length}</b> bài học</span>
+            ${fmtDur(c.ThoiLuongDuKien) ? `<span>${ico("clock")} Thời lượng học dự kiến <b>${fmtDur(c.ThoiLuongDuKien)}</b></span>` : ""}
             <span>${ico("user")} <b>${esc(c.TenGV)}</b></span>
             <span>${ico("target")} <b>${esc(levelOf(c))}</b></span>
           </div>
@@ -1095,12 +1103,13 @@
           <div class="ec-thumb" style="background:${th.grad}"><span class="glyph">${th.glyph}</span></div>
           <div class="ec-body">
             <div class="ec-price"><span class="now tnum">${free ? "Miễn phí" : vnd(c.HocPhi)}</span></div>
-            <div class="muted" style="font-size:.82rem;margin:6px 0 16px">Truy cập trọn đời · học mọi lúc</div>
+            <div class="muted" style="font-size:.82rem;margin:6px 0 16px">${c.ThoiHanTruyCap ? `Truy cập ${Math.round(c.ThoiHanTruyCap / 30)} tháng` : "Truy cập trọn đời"} · học mọi lúc</div>
             ${enrollCTA(c)}
             <ul class="ec-incl">
               <li><span class="tick">${ico("check")}</span> ${lessons.length} bài học</li>
+              ${fmtDur(c.ThoiLuongDuKien) ? `<li><span class="tick">${ico("check")}</span> Thời lượng học dự kiến ${fmtDur(c.ThoiLuongDuKien)}</li>` : ""}
               <li><span class="tick">${ico("check")}</span> ${(c.quizzes || []).length} bài kiểm tra</li>
-              <li><span class="tick">${ico("check")}</span> Video bài giảng · Truy cập trọn đời</li>
+              <li><span class="tick">${ico("check")}</span> Video bài giảng · ${c.ThoiHanTruyCap ? `Truy cập ${Math.round(c.ThoiHanTruyCap / 30)} tháng` : "Truy cập trọn đời"}</li>
             </ul>
           </div>
         </aside>
@@ -2415,7 +2424,7 @@
           <div class="field-row"><div class="field"><label>Lĩnh vực</label><select id="cfCat">${catOpts}</select></div>
             <div class="field"><label>Trình độ</label><select id="cfLvl">${lvlOpts}</select></div></div>
           <div class="field-row"><div class="field"><label>Học phí (₫) *</label><input id="cfPhi" type="number" min="0" value="${c ? Number(c.HocPhi) : ""}" placeholder="590000"></div>
-            <div class="field"><label>Thời lượng (giờ)</label><input id="cfTL" type="number" min="1" value="${c ? c.ThoiLuong : ""}" placeholder="40"></div></div>
+            <div class="field"><label>Thời lượng dự kiến (phút)</label><input id="cfTL" type="number" min="1" value="${c ? c.ThoiLuong : ""}" placeholder="180" title="Tổng thời gian học dự kiến của cả khóa, tính bằng phút. Hiển thị cho học viên khi khám phá khóa học."></div></div>
           <div class="field"><label>Thời hạn truy cập sau khi đăng ký</label><select id="cfHan">${[["", "Vĩnh viễn"], ["90", "3 tháng"], ["180", "6 tháng"], ["365", "12 tháng"]].map(([v, l]) => `<option value="${v}" ${c && String(c.ThoiHanTruyCap || "") === v ? "selected" : ""}>${l}</option>`).join("")}</select></div>
           ${!c ? `<div class="auth-note">📋 Khóa học mới sẽ ở trạng thái <b>Nháp</b> — admin kiểm tra nội dung rồi mới công khai.</div>` : ""}
           <div class="form-actions"><button type="button" class="btn btn-ghost" data-close>Hủy</button><button type="submit" class="btn btn-primary" id="cfSubmit">${c ? "Lưu thay đổi" : "Tạo khóa học"}</button></div>
