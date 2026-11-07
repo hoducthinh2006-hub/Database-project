@@ -1247,6 +1247,7 @@
         <div class="gv">👤 ${esc(c.TenGV)} · ${esc(c.LinhVuc || "")} · Đăng ký ${esc(String(c.NgayDangKy).slice(0, 10))}${cancelled ? "" : esc(hanDungText(c))}</div>
         <div class="prog-line"><div class="bar ${done ? "gold" : ""}"><i style="width:${pct}%"></i></div><span class="pc">${pct}%</span></div>
         <div class="lc-chips">
+          <span title="Mã đăng ký — dùng khi cần đối soát thanh toán hoặc hỏi admin">🔖 Mã ĐK: ${esc(c.MaDK)}</span>
           <span>📖 ${c.SoBaiHoanThanh}/${c.TongSoBai} bài</span>
           <span>📝 ${c.SoBaiKTDaLam}/${c.SoBaiKT} bài kiểm tra</span>
           <span class="${c.DiemTB != null ? "sc-" + scoreCls(c.DiemTB) : ""}">🎯 Điểm TB ${fmtScore(c.DiemTB)}</span>
@@ -2414,7 +2415,7 @@
       // khóa có phí mà chưa thanh toán: giữ chỗ nhưng chưa mở nội dung
       if (e.dangCho) return `<div class="enrolled-badge pending"><span class="eb-ic">${ico("clock")}</span> Đã gửi yêu cầu thanh toán — chờ admin xác nhận</div>`;
       if (!e.entitled) return `<div class="enrolled-badge pending"><span class="eb-ic">${ico("clock")}</span> Đã đăng ký — chờ thanh toán</div><button class="btn btn-accent btn-block btn-lg" data-pay-detail="${esc(e.MaDK)}">Thanh toán ${vnd(c.HocPhi)} ${ico("arrow-r")}</button>`;
-      return `<div class="enrolled-badge"><span class="eb-ic">${ico("check")}</span> Bạn đã đăng ký khóa học này${esc(hanDungText(e))}</div><button class="btn btn-accent btn-block btn-lg" id="startBtn">Vào học ${ico("arrow-r")}</button>`;
+      return `<div class="enrolled-badge"><span class="eb-ic">${ico("check")}</span> Bạn đã đăng ký khóa học này · Mã ĐK: ${esc(e.MaDK)}${esc(hanDungText(e))}</div><button class="btn btn-accent btn-block btn-lg" id="startBtn">Vào học ${ico("arrow-r")}</button>`;
     }
     return c.quyen && c.quyen.xem
       ? `<button class="btn btn-accent btn-block btn-lg" id="startBtn">Xem trước khóa học ${ico("arrow-r")}</button>`
